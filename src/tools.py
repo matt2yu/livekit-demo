@@ -238,6 +238,10 @@ class OrderingTools:
     async def confirm_order(self, ctx: RunContext[Userdata]) -> str:
         """Place the order. Only call this after reading the order back and hearing an
         explicit yes."""
+        # Placing the order can't be rolled back — a caller talking over the agent
+        # must not leave it half-committed.
+        ctx.disallow_interruptions()
+
         order = ctx.userdata.order
         missing = order.missing_for_confirm()
         if missing:

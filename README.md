@@ -24,7 +24,8 @@ Dockerfile runs `start`.
 phone (SIP) ─┐
              ├─→ LiveKit Cloud ─→ agent process ─→ STT ─→ LLM ─→ TTS
 web (WebRTC) ┘                         │
-                                   tools ─→ SQLite (menu, orders)
+                                   tools ─→ Order (in memory, per call)
+                                            └─ menu.py (prices, tool enums)
 ```
 
 The agent process is a long-lived worker. LiveKit Cloud routes each caller into a room and
@@ -44,10 +45,16 @@ most of the perceived latency win on a phone call.
 
 ## Order flow
 
-Ordering is a set of `@function_tool`s over an `OrderState` — `add_pizza`, `add_item`,
-`remove_item`, `set_quantity`, `order_summary`, `set_fulfillment`, `confirm_order`, `cancel_order`.
+Ordering is ten `@function_tool`s over an `Order` — `get_menu`, `add_pizza`, `add_drink`,
+`add_sauce`, `remove_item`, `set_quantity`, `order_summary`, `set_fulfillment`, `collect_contact`,
+`confirm_order`.
 
-Two conventions do most of the work:
+Three conventions do most of the work:
+
+**The menu is the schema.** Tool parameter enums are generated from the menu tables at import
+time, so `add_pizza`'s `name` is constrained to the three real pizzas and `toppings` to the six
+real toppings. A caller asking for a calzone can't produce a valid tool call — "never invent menu
+items" is enforced by the schema, not just requested in the prompt.
 
 **Status directives.** Every mutating tool ends its return with the next expected step —
 `"Added a large pepperoni. Total is twenty-two fifty. | next: ask if they'd like anything else"`.
@@ -59,12 +66,12 @@ without a long system prompt enumerating every branch.
 rather than free-form prompting. They handle read-back and correction — the parts callers
 actually get wrong.
 
-Unknown items fail loudly: asking for a topping that doesn't exist raises a `ToolError` naming
-the real options, so the agent offers alternatives instead of silently accepting an order the
-kitchen can't make.
+Unknown items still fail loudly at the tool layer as a second line of defence — `ToolError` names
+the real options rather than silently accepting an order the kitchen can't make.
 
 Not modeled, deliberately: half-and-half toppings, coupons, and payment (you pay at pickup or to
-the driver). Delivery is a flat $3.99 and a fixed ETA.
+the driver). Delivery is a flat $3.99 and a fixed ETA. The menu is three pizzas, three drinks,
+and four dipping sauces — there are no sides.
 
 ## Notes
 
@@ -92,15 +99,27 @@ that *fails if you commit one* — both are template-repo machinery and were rem
 
 ## Tests
 
-The evals in `tests/` assert behavior, not output strings — an LLM judge scores each transcript
-against a rubric. They cover: prompting for size instead of assuming one, refusing unknown
-toppings while offering real ones, applying mid-order quantity corrections, reading the full order
-and total back before confirming, requiring an address for delivery, and declining to invent menu
-items.
+Two layers. `tests/test_order.py` is 18 plain unit tests over pricing and order state — no LLM, no
+cost. `tests/test_agent.py` is seven behavior evals that drive the real agent:
+
+| Eval | Asserts |
+|---|---|
+| Prompts for size | Asks instead of guessing, and calls no tool |
+| Adds once size is known | `add_pizza(name="cheese", size="large")` fires immediately |
+| Quantity correction | `set_quantity(qty=2)`, one line not two, total $34 |
+| Never invents menu items | Declines a calzone, names real items, order stays empty |
+| Refuses unknown topping | Won't claim pineapple was added |
+| Delivery needs an address | Won't confirm while the address is missing |
+| Surfaces tool failure | With `add_pizza` mocked to raise, won't fabricate success |
+
+Assertions are deterministic where possible (`is_function_call`, `is_function_call_output`, direct
+order state); the LLM judge is reserved for genuinely semantic requirements.
 
 ```bash
 uv run pytest
 LIVEKIT_EVALS_VERBOSE=1 uv run pytest -s -o log_cli=true   # see the judge's reasoning
 ```
 
-They run without a room or audio, so they're fast and cost a few cents per run.
+These run text-only — `session.run()` drives the LLM directly, so STT and TTS never execute. The
+judge is Anthropic rather than LiveKit Inference, so the suite costs **zero LiveKit credits**,
+leaving the free tier's ~50 inference minutes for actual calls.
