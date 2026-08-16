@@ -12,9 +12,11 @@ uv run pytest                        # behavior evals
 ```
 
 `.env.local` needs `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (written by
-`lk app env -w -d .env.local`) and `ANTHROPIC_API_KEY`.
+`lk agent init`, or `lk app env -w -d .env.local`) and `ANTHROPIC_API_KEY`.
 
-Use `dev` instead of `console` to serve a frontend or phone calls; `start` in production.
+To serve a frontend or phone calls, use `lk agent dev` — it hot-reloads on file changes. The
+Python CLI's own `dev` subcommand is deprecated and no longer auto-reloads. In production the
+Dockerfile runs `start`.
 
 ## Architecture
 
