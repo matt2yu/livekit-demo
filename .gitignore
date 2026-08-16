@@ -11,10 +11,6 @@ KMS
 .pytest_cache
 .ruff_cache
 
-# SQLite (menu/orders are seeded, not source of truth)
-*.db
-*.sqlite
-*.sqlite3
 
 # Claude Code
 .claude/settings.local.json
