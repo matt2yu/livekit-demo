@@ -8,9 +8,19 @@ The following is a guide for working with this project.
 
 ## Project structure
 
-This Python project uses the `uv` package manager. You should always use `uv` to install dependencies, run the agent, and run tests.
+This is a monorepo with two deployable surfaces, following the layout LiveKit uses in its own
+full-stack examples (`livekit-examples/supabase-hacker-starter`, `realtime-playground`):
 
-All app-level code is in the `src/` directory. In general, simple agents can be constructed with a single `agent.py` file. Additional files can be added, but you must retain `agent.py` as the entrypoint (see the associated Dockerfile for how this is deployed).
+- `agent/` — the Python voice agent (`uv`), deployed to LiveKit Cloud as a container
+- `frontend/` — Next.js, the customer ordering page and the `/admin` dashboard (`pnpm`)
+- `supabase/migrations/` — schema and RLS policies
+
+Root `package.json` is a script runner, so you rarely need to `cd`: `pnpm dev`, `pnpm test`,
+`pnpm lint`, `pnpm agent:console`, `pnpm agent:deploy`.
+
+The agent uses `uv` — always use it to install dependencies, run the agent, and run tests. All
+agent code is in `agent/src/`, and `agent.py` must remain the entrypoint (the Dockerfile depends
+on it).
 
 Be sure to maintain code formatting. You can use the ruff formatter/linter as needed: `uv run ruff format` and `uv run ruff check`.
 

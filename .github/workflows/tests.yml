@@ -3,12 +3,17 @@ name: Tests
 on:
   push:
     branches: [ main ]
+    paths: ['agent/**', '.github/workflows/**']
   pull_request:
     branches: [ main ]
+    paths: ['agent/**', '.github/workflows/**']
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
 
     steps:
     - uses: actions/checkout@v6
