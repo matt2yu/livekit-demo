@@ -2,7 +2,7 @@
 
 This is a LiveKit Agents project. LiveKit Agents is a Python SDK for building voice AI agents. This project is intended to be used with LiveKit Cloud. See @README.md for more about the rest of the LiveKit ecosystem.
 
-**This project is "Lucky Slice"** — a voice agent that takes pizza takeout and delivery orders, reachable over inbound phone and a web frontend. See the "Lucky Slice specifics" section at the bottom for what is particular to this project.
+**This project is "Hire Slice"** — a voice agent that takes pizza takeout and delivery orders, reachable over inbound phone and a web frontend. See the "Hire Slice specifics" section at the bottom for what is particular to this project.
 
 The following is a guide for working with this project.
 
@@ -56,7 +56,7 @@ Beyond documentation access, the LiveKit CLI (`lk`) supports other tasks such as
 
 ---
 
-## Lucky Slice specifics
+## Hire Slice specifics
 
 ### Model pin — do not "upgrade" without checking
 
