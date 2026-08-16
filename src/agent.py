@@ -78,7 +78,7 @@ async def my_agent(ctx: JobContext):
     }
 
     session = AgentSession[Userdata](
-        userdata=Userdata(),
+        userdata=Userdata(room=ctx.room.name),
         stt=inference.STT(model="assemblyai/universal-3-5-pro", language="en"),
         # Explicit VAD, not the session default: without it the speaking anchor falls back
         # to the STT stream clock, which drifts across long calls and nested-task switches

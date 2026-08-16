@@ -22,6 +22,7 @@ from livekit.agents.beta.workflows import (
 )
 from pydantic import Field
 
+import orders_db
 from menu import (
     DELIVERY_ETA,
     DELIVERY_FEE,
@@ -52,6 +53,13 @@ OrderedName = Annotated[
 @dataclass
 class Userdata:
     order: Order = field(default_factory=Order)
+    # Set from the room name at session start. Phone calls land in rooms the SIP
+    # dispatch rule prefixes with "call-"; everything else arrived over WebRTC.
+    room: str | None = None
+
+    @property
+    def channel(self) -> str:
+        return "phone" if (self.room or "").startswith("call-") else "web"
 
 
 def _options(names) -> str:
@@ -250,6 +258,18 @@ class OrderingTools:
             )
 
         order.confirmed_code = order_code()
+
+        if orders_db.is_configured():
+            saved = await orders_db.save_order(
+                order, channel=ctx.userdata.channel, room=ctx.userdata.room
+            )
+            if not saved:
+                # The kitchen never got it, so the caller must not be told it's coming.
+                order.confirmed_code = None
+                raise ToolError(
+                    "The order didn't go through to the kitchen. Apologize and offer to try again."
+                )
+
         eta = DELIVERY_ETA if order.fulfillment == "delivery" else PICKUP_ETA
         logger.info(
             "order confirmed",
@@ -257,6 +277,7 @@ class OrderingTools:
                 "code": order.confirmed_code,
                 "total": order.total,
                 "fulfillment": order.fulfillment,
+                "channel": ctx.userdata.channel,
             },
         )
         return (
