@@ -37,7 +37,7 @@ from menu import (
 )
 from order import Line, Order, order_code
 
-logger = logging.getLogger("lucky-slice.tools")
+logger = logging.getLogger("hire-slice.tools")
 
 PizzaName = Annotated[str, Field(json_schema_extra={"enum": list(PIZZAS)})]
 DrinkName = Annotated[str, Field(json_schema_extra={"enum": list(DRINKS)})]
@@ -61,7 +61,7 @@ def _options(names) -> str:
 class OrderingTools:
     @function_tool
     async def get_menu(self, ctx: RunContext[Userdata]) -> str:
-        """Read out what Lucky Slice sells. Use when the caller asks what's available,
+        """Read out what Hire Slice sells. Use when the caller asks what's available,
         what the options are, or how much something costs."""
         return menu_summary()
 

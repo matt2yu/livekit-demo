@@ -1,4 +1,4 @@
-"""Lucky Slice menu — the single source of truth for pricing and tool schemas.
+"""Hire Slice menu — the single source of truth for pricing and tool schemas.
 
 Tool parameter enums are built from these tables at import time, so an item the
 kitchen can't make never reaches the model as a valid choice.

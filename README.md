@@ -1,4 +1,4 @@
-# Lucky Slice
+# Hire Slice
 
 A voice agent that takes pizza orders — takeout or delivery — over an inbound phone number or a
 web page. Built on [LiveKit Agents](https://docs.livekit.io/agents/) and deployed to LiveKit Cloud.

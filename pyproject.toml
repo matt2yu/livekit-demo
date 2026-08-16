@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "lucky-slice"
+name = "hire-slice"
 version = "1.0.0"
-description = "Voice AI agent for Lucky Slice pizza — takeout and delivery ordering over phone and web"
+description = "Voice AI agent for Hire Slice pizza — takeout and delivery ordering over phone and web"
 requires-python = ">=3.10, <3.15"
 
 dependencies = [

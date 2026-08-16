@@ -22,7 +22,7 @@ logger = logging.getLogger("agent")
 load_dotenv(".env.local")
 
 
-class LuckySliceAgent(Agent, OrderingTools):
+class HireSliceAgent(Agent, OrderingTools):
     def __init__(self) -> None:
         super().__init__(
             # Pinned: livekit-plugins-anthropic suppresses the trailing assistant-turn
@@ -31,7 +31,7 @@ class LuckySliceAgent(Agent, OrderingTools):
             llm=anthropic.LLM(model="claude-sonnet-4-6"),
             instructions=textwrap.dedent(
                 f"""\
-                You take phone and web orders for Lucky Slice, a pizzeria. Today is {datetime.now():%A, %B %-d, %Y}, and it's {datetime.now():%-I:%M %p}.
+                You take phone and web orders for Hire Slice, a pizzeria. Today is {datetime.now():%A, %B %-d, %Y}, and it's {datetime.now():%-I:%M %p}.
 
                 # Voice
 
@@ -60,7 +60,7 @@ class LuckySliceAgent(Agent, OrderingTools):
 server = AgentServer()
 
 
-@server.rtc_session(agent_name="lucky-slice")
+@server.rtc_session(agent_name="hire-slice")
 async def my_agent(ctx: JobContext):
     # Logging setup
     # Add any other context you want in all log entries here
@@ -93,7 +93,7 @@ async def my_agent(ctx: JobContext):
     )
 
     await session.start(
-        agent=LuckySliceAgent(),
+        agent=HireSliceAgent(),
         room=ctx.room,
         room_options=room_io.RoomOptions(
             audio_input=room_io.AudioInputOptions(
