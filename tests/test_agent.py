@@ -116,7 +116,7 @@ async def test_delivery_requires_an_address_before_confirming() -> None:
 
         order = session.userdata.order
         order.fulfillment = "delivery"
-        order.customer_name = "Matt"
+        order.customer_name = "Will"
         order.phone_number = "5551234567"
         await session.run(user_input="A large cheese pizza")
 
