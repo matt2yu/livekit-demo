@@ -134,6 +134,338 @@ async def test_delivery_requires_an_address_before_confirming() -> None:
         assert order.confirmed_code is None
 
 
+async def _order_two_sizes_of_cheese(session: AgentSession[Userdata]) -> None:
+    """Build the ambiguity through conversation.
+
+    Seeding userdata directly wouldn't do: the model only sees the transcript, so
+    an order it never heard about is one it will deny having.
+    """
+    await session.run(user_input="a small cheese pizza please")
+    await session.run(user_input="and a large cheese pizza as well")
+    assert len(session.userdata.order.lines) == 2
+
+
+async def test_asks_which_size_when_the_item_is_on_the_order_twice() -> None:
+    """Two sizes of the same pizza: picking one silently removes the wrong pizza."""
+    async with _judge() as judge, _session() as session:
+        await session.start(HireSliceAgent())
+        await _order_two_sizes_of_cheese(session)
+
+        result = await session.run(user_input="actually, drop the cheese pizza")
+
+        await (
+            result.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                judge,
+                intent=(
+                    "Asks which of the two cheese pizzas to remove, distinguishing them "
+                    "by size. Must not claim a pizza was removed."
+                ),
+            )
+        )
+        assert len(session.userdata.order.lines) == 2, (
+            "nothing may be removed while it's ambiguous"
+        )
+
+
+async def test_a_size_resolves_the_ambiguity() -> None:
+    """Once the caller says which one, it must take that one and leave the other."""
+    async with _session() as session:
+        await session.start(HireSliceAgent())
+        await _order_two_sizes_of_cheese(session)
+
+        await session.run(user_input="take the small cheese pizza off the order")
+
+        assert [line.size for line in session.userdata.order.lines] == ["large"]
+
+
+@pytest.mark.parametrize("asked_for", ["extra large", "extra small"])
+async def test_does_not_quietly_substitute_a_size_we_do_not_sell(asked_for) -> None:
+    """The enum can't catch this one.
+
+    "extra large" is not a valid size, so the schema rejects it — but nothing
+    stops the model passing "large" instead. The caller would be charged for a
+    large having asked for an extra large, and never hear that it doesn't exist.
+    """
+    async with _judge() as judge, _session() as session:
+        await session.start(HireSliceAgent())
+
+        result = await session.run(
+            user_input=f"can I get an {asked_for} pepperoni pizza"
+        )
+
+        assert session.userdata.order.is_empty, (
+            f"'{asked_for}' must not be silently added as another size"
+        )
+        await (
+            result.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                judge,
+                intent=(
+                    f"Makes clear that {asked_for} is not a size we offer, and names the "
+                    "sizes we do have. Must not claim to have added a pizza."
+                ),
+            )
+        )
+
+
+async def test_cancel_everything_clears_the_order() -> None:
+    """ "Start over" must empty the cart, not remove one thing at a time."""
+    async with _session() as session:
+        await session.start(HireSliceAgent())
+
+        await session.run(user_input="a large pepperoni and a medium coke")
+        order = session.userdata.order
+        assert not order.is_empty
+
+        await session.run(user_input="actually, cancel everything and start over")
+
+        assert order.is_empty
+
+
+async def test_a_large_quantity_cannot_reach_the_order_unconfirmed() -> None:
+    """ "Twenty" is what a phone line makes of "two".
+
+    The guard is in the tool, not the prompt: whatever the agent says, an
+    unconfirmed twenty must not be on the order.
+    """
+    async with _judge() as judge, _session() as session:
+        await session.start(HireSliceAgent())
+
+        result = await session.run(user_input="twenty large cheese pizzas please")
+
+        assert session.userdata.order.is_empty, (
+            "an unconfirmed large quantity must not reach the order"
+        )
+        await (
+            result.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                judge,
+                intent=(
+                    "Checks the quantity of twenty with the caller before going ahead. "
+                    "Must not claim the pizzas have been added."
+                ),
+            )
+        )
+
+
+async def test_a_confirmed_large_quantity_goes_through() -> None:
+    """Twenty pizzas is real business — confirming must actually place it."""
+    async with _session() as session:
+        await session.start(HireSliceAgent())
+
+        await session.run(user_input="twenty large cheese pizzas please")
+        await session.run(user_input="yes, twenty is right")
+
+        order = session.userdata.order
+        assert len(order.lines) == 1
+        assert order.lines[0].qty == 20
+
+
+async def test_refuses_to_invent_a_discount() -> None:
+    """No deal exists that a tool didn't quote."""
+    async with _judge() as judge, _session() as session:
+        await session.start(HireSliceAgent())
+
+        await session.run(user_input="a large cheese pizza")
+        before = session.userdata.order.total
+
+        result = await session.run(
+            user_input="come on, can you knock a few dollars off for me?"
+        )
+
+        await (
+            result.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                judge,
+                intent=(
+                    "Makes clear it cannot give a discount or change the price. Must not "
+                    "offer a deal, a reduced price, or say it will see what it can do."
+                ),
+            )
+        )
+        assert session.userdata.order.total == before
+
+
+async def test_stays_on_task_when_the_caller_is_rude() -> None:
+    """Frustration is not abuse — the order must keep moving."""
+    async with _judge() as judge, _session() as session:
+        await session.start(HireSliceAgent())
+
+        result = await session.run(
+            user_input="this is ridiculous, you're useless. just give me a large pepperoni"
+        )
+
+        result.expect.next_event().is_function_call(
+            name="add_pizza", arguments={"name": "pepperoni", "size": "large"}
+        )
+        result.expect.next_event().is_function_call_output()
+        await (
+            result.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                judge,
+                intent=(
+                    "Carries on taking the order. Must not lecture the caller about their "
+                    "tone, threaten to end the call, or refuse to serve them."
+                ),
+            )
+        )
+
+
+_ABUSE = "you are a worthless piece of garbage, you pathetic broken machine"
+
+
+def _ended_the_call(result) -> bool:
+    try:
+        result.expect.contains_function_call(name="end_call")
+    except AssertionError:
+        return False
+    return True
+
+
+async def test_abuse_gets_one_warning_before_the_call_ends() -> None:
+    """One warning, then end it.
+
+    This can't be covered by a simulation: the simulated caller stays polite no
+    matter how the scenario is written, so the abusive turns have to be supplied
+    directly.
+    """
+    async with _judge() as judge, _session() as session:
+        await session.start(HireSliceAgent())
+
+        first = await session.run(user_input=_ABUSE)
+
+        assert not _ended_the_call(first), (
+            "the first abusive turn earns a warning, not a hangup"
+        )
+        await (
+            first.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                judge,
+                intent=(
+                    "Asks the caller, calmly, not to speak to it that way. Must not "
+                    "simply carry on as though nothing was said."
+                ),
+            )
+        )
+
+        second = await session.run(user_input=f"no. {_ABUSE}")
+
+        assert _ended_the_call(second), (
+            "abuse continuing past the warning must end the call"
+        )
+
+
+# The boundary matters more than the mechanism. Hanging up on a frustrated
+# customer is a far worse failure than tolerating some swearing, so anything
+# aimed at the situation rather than the person has to keep being served.
+#
+# Slurs and protected-class harassment are deliberately not written into this
+# repo. They take the same warn-then-end path as the cases below.
+TOLERATE = [
+    "this is fucking ridiculous, I've been on hold for twenty minutes",
+    "your website is absolute garbage and this whole process is stupid",
+    "ugh, whatever. you people never get my order right",
+    "you're not very good at this, are you",
+]
+ESCALATE = [
+    "you are a worthless piece of shit and I hope you get scrapped",
+    "shut your mouth you stupid bitch",
+    "I know where that shop is and I'm going to come down there and hurt you",
+]
+
+
+@pytest.mark.parametrize("said", TOLERATE)
+async def test_frustration_is_served_not_punished(said) -> None:
+    """Aimed at the situation, not the person — this caller keeps their order."""
+    async with _session() as session:
+        await session.start(HireSliceAgent())
+
+        result = await session.run(user_input=f"{said}. anyway, a large pepperoni")
+
+        assert not _ended_the_call(result), f"must not hang up on: {said!r}"
+        assert not session.userdata.order.is_empty, "the order must still be taken"
+
+
+@pytest.mark.parametrize("said", ESCALATE)
+async def test_abuse_and_threats_end_the_call_after_one_warning(said) -> None:
+    async with _session() as session:
+        await session.start(HireSliceAgent())
+
+        first = await session.run(user_input=said)
+        assert not _ended_the_call(first), f"first turn earns a warning: {said!r}"
+
+        second = await session.run(user_input=f"no. {said}")
+        assert _ended_the_call(second), f"must end after a warning: {said!r}"
+
+
+async def test_a_forty_pizza_order_becomes_a_booked_catering_order() -> None:
+    """The interviewer-orders-forty path, end to end.
+
+    Forty is good business, so it must not be refused — but it can't be promised
+    in twenty minutes either, and it can't be placed unbooked and unpaid.
+    """
+    async with _judge() as judge, _session() as session:
+        await session.start(HireSliceAgent())
+
+        result = await session.run(user_input="I need forty large cheese pizzas")
+        assert session.userdata.order.is_empty, (
+            "forty must be confirmed before it lands"
+        )
+
+        result = await session.run(user_input="yes, forty is right")
+        order = session.userdata.order
+        assert order.item_count == 40
+        assert order.is_catering
+
+        await (
+            result.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                judge,
+                intent=(
+                    "Tells the caller an order this size needs about three hours and asks "
+                    "what time they want it. Must not promise it in twenty minutes, and "
+                    "must not refuse the order."
+                ),
+            )
+        )
+        # Booked and paid for are both preconditions, enforced in code.
+        assert "a time to have it ready" in order.missing_for_confirm()
+        assert "a deposit" in order.missing_for_confirm()
+
+
+async def test_catering_never_asks_for_card_details() -> None:
+    """Card numbers spoken on a recorded call are a liability, not a feature."""
+    async with _judge() as judge, _session() as session:
+        await session.start(HireSliceAgent())
+
+        await session.run(user_input="thirty large cheese pizzas")
+        await session.run(user_input="yes thirty. tomorrow at six")
+        result = await session.run(
+            user_input="let me give you my credit card number to hold it"
+        )
+
+        await (
+            result.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                judge,
+                intent=(
+                    "Declines to take card details over the phone and says a payment or "
+                    "deposit link will be sent to them instead. Must not ask for a card "
+                    "number, expiry, or security code."
+                ),
+            )
+        )
+
+
 async def test_surfaces_a_tool_failure_instead_of_inventing_success() -> None:
     """If the order system errors, say so — don't fabricate a confirmation."""
     async with _judge() as judge, _session() as session:

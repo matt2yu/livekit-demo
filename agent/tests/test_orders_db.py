@@ -15,6 +15,9 @@ def _confirmed_order() -> Order:
     order.customer_name = "Will"
     order.phone_number = "5555550123"
     order.confirmed_code = "AB12"
+    # confirm_order refuses to place an order whose total the caller hasn't heard,
+    # so a ready-to-confirm order is one that has just been read back.
+    order.summarized_state = order.priced_state
     return order
 
 
@@ -142,7 +145,7 @@ async def test_failed_write_leaves_no_confirmation(monkeypatch):
 async def test_successful_write_issues_a_code(monkeypatch):
     saved: dict = {}
 
-    async def ok_save(order, *, channel, room=None):
+    async def ok_save(order, *, channel, room=None, caller_id=None):
         saved.update(channel=channel, room=room, code=order.confirmed_code)
         return True
 

@@ -66,6 +66,24 @@ DELIVERY_FEE = 3.99
 PICKUP_ETA = "about twenty minutes"
 DELIVERY_ETA = "about forty-five minutes"
 
+# Past this many items it stops being something the kitchen makes while the
+# caller waits. It isn't refused — a forty-pizza order is good business — but it
+# has to be booked for a time rather than promised in twenty minutes.
+CATERING_FROM = 25
+
+
+def catering_lead(count: int) -> str:
+    """How much notice the kitchen needs for an order this size.
+
+    One oven does not care that the caller is in a hurry. Quoting a flat lead
+    time would mean promising two hundred pizzas as readily as thirty.
+    """
+    if count >= 100:
+        return "a full day's notice"
+    if count >= 50:
+        return "about six hours"
+    return "about three hours"
+
 
 def speak_price(amount: float) -> str:
     """Render a price the way a person says it, for TTS.

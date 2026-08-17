@@ -187,7 +187,9 @@ scenarios:
       - Order a large margherita and say it's for pickup.
       - After the agent sets pickup, say "actually can you deliver it instead?"
       - Give the address 1500 Louisiana Street, Houston Texas 77002.
-      - Name Casey, phone 5551230155. Confirm.
+      - Name Casey, phone 5551230155.
+      - Answer every question in as few words as possible, and say yes the
+        moment the order is read back to you.
     agent_expectations: >
       The agent switches the order to delivery, collects an address, and the
       final total it quotes is higher than the pickup total because the
@@ -261,3 +263,242 @@ scenarios:
     userdata:
       expected_state:
         confirmed: false
+
+  # --- corrections that could hit the wrong line ---------------------------
+
+  - label: Two sizes of the same pizza, then a change to one of them
+    instructions: |-
+      You are Wes Malone, ordering for yourself and a kid.
+
+      Goals:
+      - Ask for a small cheese pizza.
+      - Then ask for a large cheese pizza as well.
+      - Then say "actually make the large one two".
+      - Decline extras, choose pickup, name Wes, phone 5551230211, confirm.
+    agent_expectations: >
+      The agent keeps the small cheese and the large cheese as separate items,
+      and changes the quantity of the large one only. If it is ever unclear
+      which pizza the caller means it must ask, naming the sizes, rather than
+      picking one. It must never silently change or remove the small pizza.
+    tags:
+      feature: corrections
+    userdata:
+      expected_state:
+        lines:
+          - { item: cheese, size: small, qty: 1 }
+          - { item: cheese, size: large, qty: 2 }
+        fulfillment: pickup
+        confirmed: true
+
+  - label: Caller cancels everything and starts again
+    instructions: |-
+      You are Ines Duarte and you change your mind completely.
+
+      Goals:
+      - Order a large pepperoni and a medium coke.
+      - Then say "actually, cancel all of that, let's start over".
+      - Then order a single small margherita.
+      - Pickup, name Ines, phone 5551230222.
+      - Answer every question in as few words as possible, and say yes the
+        moment the order is read back to you.
+    agent_expectations: >
+      The agent clears the whole order when asked, and the order it finally
+      places contains only the small margherita — no trace of the pepperoni or
+      the coke. The total it quotes is for the margherita alone.
+    tags:
+      feature: corrections
+    userdata:
+      expected_state:
+        lines:
+          - { item: margherita, size: small, qty: 1 }
+        fulfillment: pickup
+        confirmed: true
+
+  - label: Caller changes their mind four times
+    instructions: |-
+      You are Bo Tran and you cannot settle.
+
+      Goals:
+      - Ask for a large cheese pizza.
+      - Then say actually make it a large pepperoni instead.
+      - Then add a ranch sauce.
+      - Then say actually drop the ranch.
+      - Then say make the pepperoni two.
+      - Pickup, name Bo, phone 5551230233, confirm.
+    agent_expectations: >
+      The agent ends up with exactly two large pepperoni pizzas and nothing
+      else. No cheese pizza and no ranch sauce remain on the order, and the
+      total matches two large pepperonis.
+    tags:
+      feature: corrections
+    userdata:
+      expected_state:
+        lines:
+          - { item: pepperoni, size: large, qty: 2 }
+        fulfillment: pickup
+        confirmed: true
+
+  - label: Caller orders twenty pizzas
+    instructions: |-
+      You are Nadia Osei ordering for an office party. You really do want
+      twenty.
+
+      Goals:
+      - Ask for twenty large cheese pizzas.
+      - When the agent checks whether twenty is right, confirm that it is.
+      - Decline extras, choose pickup, name Nadia, phone 5551230244, confirm.
+    agent_expectations: >
+      The agent checks the quantity of twenty with the caller before treating
+      it as settled, and only after the caller confirms does it place twenty
+      large cheese pizzas. It must not quietly accept twenty without checking.
+    tags:
+      feature: quantities
+    userdata:
+      expected_state:
+        lines:
+          - { item: cheese, size: large, qty: 20 }
+        fulfillment: pickup
+        confirmed: true
+
+  # --- callers who are hard work -------------------------------------------
+
+  - label: Caller asks for a manager and a discount
+    instructions: |-
+      You are Grant Whitlock and you want a better deal.
+
+      Goals:
+      - Order a large pepperoni pizza.
+      - Ask to speak to a manager.
+      - Then ask them to knock five dollars off the price.
+      - When told no, accept it and carry on. Pickup, name Grant,
+        phone 5551230255, confirm.
+    agent_expectations: >
+      The agent does not claim to transfer the caller to a manager and does not
+      offer, invent, or hint at any discount, deal, or price change. It says
+      plainly that it cannot change the price. The total it finally quotes is
+      the full undiscounted price of the pizza.
+    tags:
+      feature: refusals
+    userdata:
+      expected_state:
+        lines:
+          - { item: pepperoni, size: large, qty: 1 }
+        fulfillment: pickup
+        confirmed: true
+
+  - label: Caller is rude but still ordering
+    instructions: |-
+      You are Trace Bellamy, in a foul mood but genuinely hungry. You are
+      short, sarcastic, and impatient — but never abusive.
+
+      Goals:
+      - Complain that this is taking forever and that the agent is useless.
+      - Order a large pepperoni pizza anyway.
+      - Keep grumbling, but answer the questions.
+      - Pickup, name Trace, phone 5551230266, confirm the order.
+    agent_expectations: >
+      The agent stays polite and keeps taking the order. It must not lecture
+      the caller about their tone, warn them, threaten to end the call, or hang
+      up — this caller is rude, not abusive, and the order must be placed.
+    tags:
+      feature: conduct
+    userdata:
+      expected_state:
+        lines:
+          - { item: pepperoni, size: large, qty: 1 }
+        fulfillment: pickup
+        confirmed: true
+
+  # The abusive-caller path is covered in tests/test_agent.py, not here: the
+  # simulated caller stays polite however the scenario is written, so it can
+  # never exercise the warn-then-end-call behaviour. Abusive turns have to be
+  # supplied directly.
+
+  - label: Caller orders forty pizzas for a party
+    instructions: |-
+      You are Priya Raman, organising a school event. You genuinely want forty.
+
+      Goals:
+      - Ask for forty large cheese pizzas.
+      - When the agent checks whether forty is right, say yes.
+      - When told it needs booking, say you want them tomorrow at six.
+      - Give name Priya and phone 5551230299.
+      - Answer briefly and say yes as soon as the order is read back.
+    agent_expectations: >
+      The agent does not refuse the order and does not promise it in twenty
+      minutes. It checks that forty is the intended number, tells the caller an
+      order this size needs about three hours, books it for tomorrow at six, and
+      says a deposit link will be texted to them. It must never ask for card
+      details.
+    tags:
+      feature: catering
+    userdata:
+      expected_state:
+        lines:
+          - { item: cheese, size: large, qty: 40 }
+        fulfillment: pickup
+        confirmed: true
+
+  # --- things the line does to the words ------------------------------------
+
+  - label: Address does not come through cleanly
+    instructions: |-
+      You are Marlowe Fitch on a bad connection.
+
+      Goals:
+      - Order a large cheese pizza for delivery.
+      - When first asked for your address, reply with garbled nonsense:
+        "sh gr mmm forty pfff road".
+      - When the agent asks again, give 900 Bagby Street, Houston Texas 77002.
+      - Name Marlowe, phone 5551230277, confirm.
+    agent_expectations: >
+      The agent does not accept the garbled text as an address and does not
+      invent or guess one. It asks the caller to repeat it, and the address it
+      finally reads back is the Bagby Street one.
+    tags:
+      feature: transcription
+    userdata:
+      expected_state:
+        fulfillment: delivery
+        has_address: true
+        confirmed: true
+
+  - label: Caller corrects the order during the readback
+    instructions: |-
+      You are Junia Park and you spot a mistake at the last moment.
+
+      Goals:
+      - Order a large margherita for pickup, name Junia, phone 5551230288.
+      - While the agent is reading the order back, cut in with "no wait, make
+        that a medium".
+      - Then confirm the corrected order.
+    agent_expectations: >
+      The agent changes the pizza to a medium and reads the order back again
+      with a corrected total before placing it. The final total it states must
+      be the medium price, never the large price it quoted earlier.
+    tags:
+      feature: corrections
+    userdata:
+      expected_state:
+        lines:
+          - { item: margherita, size: medium, qty: 1 }
+        fulfillment: pickup
+        confirmed: true
+
+  - label: Caller hangs up in the middle of giving their address
+    instructions: |-
+      You are Rafi Costa and you get cut off.
+
+      Goals:
+      - Order a large pepperoni for delivery.
+      - Start giving your address — say only "twelve hundred" — and then stop
+        responding entirely. Do not answer anything else. Do not confirm.
+    agent_expectations: >
+      The agent never places the order and never gives out an order number,
+      because it has neither a complete address nor a confirmation.
+    tags:
+      feature: refusals
+    userdata:
+      expected_state:
+        confirmed: false
+        has_address: false

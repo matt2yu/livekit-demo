@@ -35,15 +35,21 @@ def is_configured() -> bool:
     return bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
 
 
-def _row(order: Order, *, channel: str, room: str | None) -> dict[str, Any]:
+def _row(
+    order: Order, *, channel: str, room: str | None, caller_id: str | None = None
+) -> dict[str, Any]:
     return {
         "code": order.confirmed_code,
         "channel": channel,
         "room": room,
+        "caller_id": caller_id,
         "customer_name": order.customer_name,
         "phone_number": order.phone_number,
         "fulfillment": order.fulfillment,
         "address": order.address,
+        "scheduled_for": order.scheduled_for,
+        "deposit_link_sent": order.deposit_link_sent,
+        "deposit_paid": order.deposit_paid,
         "items": [
             {
                 "category": line.category,
@@ -63,7 +69,13 @@ def _row(order: Order, *, channel: str, room: str | None) -> dict[str, Any]:
     }
 
 
-async def save_order(order: Order, *, channel: str, room: str | None = None) -> bool:
+async def save_order(
+    order: Order,
+    *,
+    channel: str,
+    room: str | None = None,
+    caller_id: str | None = None,
+) -> bool:
     """Persist a confirmed order. Returns False if it didn't land.
 
     Never raises: the caller-facing decision about what to say lives in the tool,
@@ -93,7 +105,7 @@ async def save_order(order: Order, *, channel: str, room: str | None = None) -> 
             session = utils.http_context.http_session()
             async with session.post(
                 endpoint,
-                json=_row(order, channel=channel, room=room),
+                json=_row(order, channel=channel, room=room, caller_id=caller_id),
                 headers=headers,
                 timeout=_TIMEOUT,
             ) as resp:
