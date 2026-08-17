@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getStripe, getSupabaseAdmin } from '@/lib/stripe';
-import { type Order, depositDue, isCatering } from '@/lib/supabase';
+import { type Order, amountDue, isCatering } from '@/lib/supabase';
 
 /**
- * Opens a Stripe Checkout session for a catering deposit.
+ * Opens a Stripe Checkout session for a catering order, charged in full.
  *
  * The browser sends a code and nothing else. The amount is read from the order
  * row here — a request body carrying its own price is a request body that pays
@@ -33,10 +33,10 @@ export async function POST(req: Request) {
 
   const order = data as Order;
   if (!isCatering(order)) {
-    return NextResponse.json({ error: 'That order takes no deposit.' }, { status: 409 });
+    return NextResponse.json({ error: 'That order is not paid online.' }, { status: 409 });
   }
   if (order.deposit_paid) {
-    return NextResponse.json({ error: 'That deposit is already paid.' }, { status: 409 });
+    return NextResponse.json({ error: 'That order is already paid.' }, { status: 409 });
   }
 
   const origin = new URL(req.url).origin;
@@ -47,9 +47,9 @@ export async function POST(req: Request) {
         quantity: 1,
         price_data: {
           currency: 'usd',
-          unit_amount: Math.round(depositDue(order) * 100),
+          unit_amount: Math.round(amountDue(order) * 100),
           product_data: {
-            name: `Catering deposit — order ${order.code}`,
+            name: `Catering order ${order.code}`,
             description: `${order.customer_name}, for ${order.scheduled_for}`,
           },
         },

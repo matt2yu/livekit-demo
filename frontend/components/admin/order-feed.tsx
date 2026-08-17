@@ -92,7 +92,7 @@ export function OrderFeed() {
     <div className="space-y-8">
       <Section title="Make queue" count={making.length} orders={making} />
       {blocked.length > 0 && (
-        <Section title="Awaiting deposit" count={blocked.length} orders={blocked} />
+        <Section title="Awaiting payment" count={blocked.length} orders={blocked} />
       )}
     </div>
   );

@@ -78,9 +78,18 @@ export function isMakeable(order: Order): boolean {
   return !isCatering(order) || order.deposit_paid;
 }
 
-/** 20% of the total, floored at $25. Computed here and again server-side. */
-export function depositDue(order: Order): number {
-  return Math.max(25, Math.round(order.total * 0.2 * 100) / 100);
+/**
+ * What a catering order must pay before the kitchen starts: all of it.
+ *
+ * A part-payment leaves the shop carrying the rest of a four-figure order on a
+ * promise from someone who rang once. Prepaying in full is also the only thing
+ * that makes a prank catering order cost the prankster rather than the kitchen.
+ *
+ * `deposit_paid` keeps its name — the column means the money cleared, and
+ * renaming it would reach into the agent, its tests, and the prompt.
+ */
+export function amountDue(order: Order): number {
+  return order.total;
 }
 
 export function formatMoney(amount: number): string {

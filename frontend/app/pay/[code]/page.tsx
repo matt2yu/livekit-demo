@@ -1,7 +1,7 @@
 import { PayButton } from '@/components/pay/pay-button';
 import {
   type Order,
-  depositDue,
+  amountDue,
   describeItem,
   formatMoney,
   getSupabase,
@@ -13,7 +13,7 @@ import {
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
-  title: 'Hire Slice — deposit',
+  title: 'Hire Slice — payment',
 };
 
 function Shell({ children }: React.PropsWithChildren) {
@@ -60,7 +60,7 @@ export default async function PayPage({ params }: { params: Promise<{ code: stri
       <Shell>
         <h1 className="text-lg font-bold">Nothing to pay</h1>
         <p className="text-muted-foreground mt-2 text-sm">
-          Order {order.code} takes no deposit — pay at the counter or on delivery.
+          Order {order.code} is paid at the counter or on delivery.
         </p>
       </Shell>
     );
@@ -69,7 +69,7 @@ export default async function PayPage({ params }: { params: Promise<{ code: stri
   return (
     <Shell>
       <h1 className="text-lg font-bold">
-        {order.deposit_paid ? 'Deposit paid' : 'Deposit for order'}{' '}
+        {order.deposit_paid ? 'Paid — order' : 'Catering order'}{' '}
         <span className="font-mono tracking-widest">{order.code}</span>
       </h1>
       <p className="text-muted-foreground mt-1 text-sm">
@@ -87,19 +87,15 @@ export default async function PayPage({ params }: { params: Promise<{ code: stri
         ))}
       </ul>
 
-      <div className="mt-3 flex justify-between border-t pt-3 text-sm">
-        <span className="text-muted-foreground">Order total</span>
-        <span className="font-mono">{formatMoney(order.total)}</span>
-      </div>
-      <div className="mt-1 flex justify-between text-sm font-medium">
-        <span>Deposit due now</span>
-        <span className="font-mono">{formatMoney(depositDue(order))}</span>
+      <div className="mt-3 flex justify-between border-t pt-3 text-sm font-medium">
+        <span>Due now, in full</span>
+        <span className="font-mono">{formatMoney(amountDue(order))}</span>
       </div>
 
       {order.deposit_paid ? (
         <p className="mt-6 text-sm font-medium">Paid. The kitchen has it — nothing else to do.</p>
       ) : (
-        <PayButton code={order.code} label={`Pay ${formatMoney(depositDue(order))} deposit`} />
+        <PayButton code={order.code} label={`Pay ${formatMoney(amountDue(order))}`} />
       )}
     </Shell>
   );

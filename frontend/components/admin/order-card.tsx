@@ -1,7 +1,8 @@
+import Link from 'next/link';
 import { cn } from '@/lib/shadcn/utils';
 import {
   type Order,
-  depositDue,
+  amountDue,
   describeItem,
   formatMoney,
   formatPhone,
@@ -54,10 +55,19 @@ export function OrderCard({ order }: { order: Order }) {
       </header>
 
       {blocked && (
-        <p className="text-muted-foreground mt-3 text-sm font-medium">
-          Awaiting deposit — {formatMoney(depositDue(order))} of {formatMoney(order.total)}. Do not
-          start.
-        </p>
+        <div className="mt-3">
+          <p className="text-muted-foreground text-sm font-medium">
+            Awaiting payment — {formatMoney(amountDue(order))} in full. Do not start.
+          </p>
+          {/* The agent cannot send this link — no SMS — so the counter is where a
+              customer gets it, read out or typed for them. */}
+          <Link
+            href={`/pay/${order.code}`}
+            className="text-primary mt-1 inline-block text-sm underline underline-offset-4"
+          >
+            Open the payment page
+          </Link>
+        </div>
       )}
 
       <div className="mt-3 text-sm">
