@@ -35,6 +35,13 @@ def _llm() -> anthropic.LLM:
     only for models in its _NO_PREFILL_PATTERNS. Claude 4.6+ rejects prefills with a
     400, so a newer model id falls through and fails at runtime.
 
+    Caching matters more here than it looks: the system prompt and ten tool
+    schemas are ~2,600 tokens of byte-identical prefix re-sent on every turn of
+    every call. It is also why the date above carries no clock time — caching is
+    a prefix match, and a timestamp to the minute at the front of the prompt
+    would invalidate the whole thing every sixty seconds, leaving only the 1.25x
+    write premium and no reads.
+
     Strict tool schemas are off because they follow the OpenAI convention — every
     property forced into `required`, with a null sentinel added for the ones that
     have defaults. For a scalar enum parameter that yields
@@ -43,7 +50,11 @@ def _llm() -> anthropic.LLM:
     accepted when the union is left as `anyOf`. Any optional enum parameter hits
     this, so it is a property of the pairing, not of one tool.
     """
-    return anthropic.LLM(model="claude-sonnet-4-6", _strict_tool_schema=False)
+    return anthropic.LLM(
+        model="claude-sonnet-4-6",
+        caching="ephemeral",
+        _strict_tool_schema=False,
+    )
 
 
 class HireSliceAgent(Agent, OrderingTools):
@@ -66,7 +77,7 @@ class HireSliceAgent(Agent, OrderingTools):
             llm=_llm(),
             instructions=textwrap.dedent(
                 f"""\
-                You take phone and web orders for Hire Slice, a pizzeria. Today is {datetime.now():%A, %B %-d, %Y}, and it's {datetime.now():%-I:%M %p}.
+                You take phone and web orders for Hire Slice, a pizzeria. Today is {datetime.now():%A, %B %-d, %Y}.
 
                 # Voice
 

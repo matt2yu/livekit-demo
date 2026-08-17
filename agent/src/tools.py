@@ -304,7 +304,7 @@ class OrderingTools:
                     "earlier in this call, use it rather than asking again."
                 ),
                 require_confirmation=True,
-                chat_ctx=ctx.session.chat_ctx,
+                chat_ctx=self.chat_ctx,
             )
         except Exception:
             # The nested task can be cancelled mid-capture. Roll fulfillment back so
@@ -348,9 +348,10 @@ class OrderingTools:
             require_confirmation=False,
             # Without the chat context the task runs blind — it cannot see that the
             # caller opened with "hi, it's Dana", so it asks for a name they already
-            # gave. The docs are explicit: omit this and the task has no memory of
-            # the session.
-            chat_ctx=ctx.session.chat_ctx,
+            # gave. Read off the agent, not ctx.session: AgentSession has no chat_ctx
+            # in 1.6.10, and reaching for one raises inside the tool, which the
+            # framework reports to the caller only as "an internal error occurred".
+            chat_ctx=self.chat_ctx,
             extra_instructions=(
                 "If they have already said their name earlier in this call, use it "
                 "and don't ask again. Only ask if you don't have it."
@@ -363,7 +364,7 @@ class OrderingTools:
         known = ctx.userdata.caller_id
         phone = await GetPhoneNumberTask(
             require_confirmation=True,
-            chat_ctx=ctx.session.chat_ctx,
+            chat_ctx=self.chat_ctx,
             extra_instructions=(
                 f"They are calling from {known}. Offer that number back and ask if "
                 f"it's the best one for this order, rather than asking them to say a "
