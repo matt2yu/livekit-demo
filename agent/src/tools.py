@@ -223,7 +223,16 @@ class OrderingTools:
                 qty=qty,
             )
         )
-        return _added(order, line)
+        try:
+            return _added(order, line)
+        except Exception:
+            # An error reply must not leave items on the order: a crash here
+            # once re-armed the quantity check, and each confirmed retry
+            # silently added another two hundred pizzas.
+            line.qty -= qty
+            if line.qty <= 0:
+                order.lines.remove(line)
+            raise
 
     @function_tool
     async def set_quantity(

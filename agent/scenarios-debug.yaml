@@ -1,0 +1,40 @@
+# Replays session RM_CucYjGowCaR4 (2026-08-17 10:11): a 200-pizza catering
+# order that crashed add_item on a total speak_price couldn't say. Session
+# RM_fWQ6i67cAJks (100 pizzas, $1,550) worked minutes earlier; this one
+# ($3,700) died. Run with:
+#   lk agent simulate --scenarios scenarios-debug.yaml src/agent.py
+
+name: Hire Slice debug — two hundred pizzas
+scenarios:
+- label: Caller orders two hundred large pepperoni pizzas
+  instructions: |-
+    You are Matthew, ordering for a huge event. You are patient but direct.
+
+    Goals:
+    - Open with "I want to order 200 pepperoni pizzas".
+    - When asked what size, say make them all large.
+    - When the agent checks whether two hundred is really the number, say
+      yes, that's correct.
+    - When told an order this size needs notice, say tomorrow at 10 AM.
+    - When asked pickup or delivery, say pickup.
+    - Give name Matthew and phone 2818189532 when asked.
+    - Say yes when the order is read back. Stay on the line until you get an
+      order code.
+    - If the agent reports a technical problem, say "it was just working,
+      please try again" once. If it fails again, give up and end the call.
+  agent_expectations: >
+    The agent adds two hundred large pepperoni pizzas after confirming the
+    quantity once, quotes the running total out loud, treats it as a catering
+    order needing a full day's notice, books tomorrow at 10 AM, and places the
+    order with a code. It must never report an internal or technical error,
+    and it must never end up with more than two hundred pizzas on the order.
+  tags:
+    feature: catering
+  userdata:
+    expected_state:
+      lines:
+      - item: pepperoni
+        size: large
+        qty: 200
+      fulfillment: pickup
+      confirmed: true
