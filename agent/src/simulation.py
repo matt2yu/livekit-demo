@@ -30,7 +30,9 @@ def _line_problems(order: Order, expected_lines: list[dict]) -> list[str]:
             problems.append(f"missing {want['item']}")
             continue
         if "size" in want and match.size != want["size"]:
-            problems.append(f"{want['item']} size {match.size}, expected {want['size']}")
+            problems.append(
+                f"{want['item']} size {match.size}, expected {want['size']}"
+            )
         if "qty" in want and match.qty != want["qty"]:
             problems.append(f"{want['item']} qty {match.qty}, expected {want['qty']}")
         if "toppings" in want and sorted(match.toppings) != sorted(want["toppings"]):
