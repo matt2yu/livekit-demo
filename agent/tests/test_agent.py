@@ -13,7 +13,7 @@ import pytest
 from livekit.agents import AgentSession, mock_tools
 from livekit.plugins import anthropic
 
-from agent import HireSliceAgent
+from agent import HireSliceAgent, _llm
 from tools import Userdata
 
 
@@ -22,7 +22,13 @@ def _judge():
 
 
 def _session() -> AgentSession[Userdata]:
-    return AgentSession[Userdata](userdata=Userdata())
+    """Mirrors the real session, which carries an LLM of its own.
+
+    The nested prebuilt tasks take their model from the session, not the agent,
+    so a session without one cannot run them — which is how a broken
+    collect_contact passed 95 tests.
+    """
+    return AgentSession[Userdata](userdata=Userdata(), llm=_llm())
 
 
 async def test_the_agent_speaks_first() -> None:
@@ -156,6 +162,34 @@ async def test_offers_a_drink_or_sauce_once_they_are_done() -> None:
                 ),
             )
         )
+
+
+async def test_contact_collection_actually_runs() -> None:
+    """The nested name and phone tasks have to survive a real call.
+
+    They were reaching for a chat context off AgentSession, which has none in
+    1.6.10 — the tool raised, the framework reported only "an internal error
+    occurred", and every simulated order died at confirm. Nothing in the suite
+    noticed, because no test had ever driven a nested task.
+    """
+    async with _session() as session:
+        await session.start(HireSliceAgent())
+
+        # Enough turns for the phone task to finish its read-back — cut it short
+        # and the task is cancelled, which looks like the bug it's guarding.
+        for said in (
+            "a large cheese pizza",
+            "no thanks",
+            "pickup",
+            "Dana",
+            "5551234567",
+            "yes that's right",
+        ):
+            await session.run(user_input=said)
+
+        order = session.userdata.order
+        assert order.customer_name, "the name task must put a name on the order"
+        assert order.phone_number, "the phone task must put a number on the order"
 
 
 async def test_never_invents_menu_items() -> None:
