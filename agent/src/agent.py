@@ -15,6 +15,7 @@ from livekit.agents import (
 )
 from livekit.plugins import ai_coustics, anthropic
 
+from simulation import on_simulation_end
 from tools import OrderingTools, Userdata
 
 logger = logging.getLogger("agent")
@@ -50,6 +51,14 @@ class HireSliceAgent(Agent, OrderingTools):
                 - When they're done adding items, ask whether it's pickup or delivery, then collect their name and phone number.
                 - Read the whole order back with the total and get an explicit yes before you place it.
 
+                # When you didn't catch it
+
+                You are on a phone line and the transcription is imperfect. If what you got doesn't
+                clearly map to an order, a question, or a yes/no, ask them to say it again — never
+                guess, and never answer as though you understood. "Sorry, I didn't catch that —
+                what was that?" is always better than agreeing with something they didn't say.
+                Anything that sounds like a question about the menu means read them the menu.
+
                 # When something isn't available
 
                 Say what we don't have, then name what we do, and let them choose. Never accept an
@@ -69,7 +78,7 @@ class HireSliceAgent(Agent, OrderingTools):
 server = AgentServer()
 
 
-@server.rtc_session(agent_name="hire-slice")
+@server.rtc_session(agent_name="hire-slice", on_simulation_end=on_simulation_end)
 async def my_agent(ctx: JobContext):
     # Logging setup
     # Add any other context you want in all log entries here

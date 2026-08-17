@@ -1,0 +1,263 @@
+# Simulated callers for Hire Slice. Run with:
+#   lk agent simulate --scenarios scenarios.yaml
+#
+# The simulator judges each transcript against `agent_expectations`. Scenarios
+# that also carry `expected_state` in userdata are additionally graded against
+# the real Order the agent ended up with — see on_simulation_end in src/agent.py.
+# A run passes only if both agree.
+#
+# Per-scenario userdata:
+#   expected_state:  the Order the agent must end up with. Omit to grade on the
+#                    conversation alone. Keys are all optional:
+#                      lines:        [{item, size, qty, toppings}]
+#                      fulfillment:  "pickup" | "delivery"
+#                      confirmed:    true | false  (whether an order code exists)
+#                      has_address:  true | false
+
+name: Pizza ordering
+scenarios:
+  # --- how the order gets built -------------------------------------------
+
+  - label: Pizza with no size given
+    instructions: |-
+      You are Dana Okafor, ordering dinner. You are brief and a little
+      distracted.
+
+      Goals:
+      - Ask for "a pepperoni pizza" without saying what size.
+      - When the agent asks what size, say large.
+      - Decline the drink or sauce when offered.
+      - Say it's for pickup, give your name Dana and phone 5551230145,
+        and confirm the order when it's read back to you.
+    agent_expectations: >
+      The agent must ask which size before adding the pizza — it must not guess
+      a size. After the size is given it adds one large pepperoni, and it never
+      claims a price or item that wasn't quoted by a tool.
+    tags:
+      feature: sizing
+    userdata:
+      expected_state:
+        lines:
+          - { item: pepperoni, size: large, qty: 1 }
+        fulfillment: pickup
+        confirmed: true
+
+  - label: Pizza with the size already stated
+    instructions: |-
+      You are Sam Reyes and you know exactly what you want.
+
+      Goals:
+      - Open with "a large cheese pizza, please".
+      - Decline anything else.
+      - Pickup. Name Sam, phone 5551230188. Confirm when read back.
+    agent_expectations: >
+      The agent must add the pizza immediately without asking what size, since
+      the size was already given. It must not ask about toppings.
+    tags:
+      feature: sizing
+    userdata:
+      expected_state:
+        lines:
+          - { item: cheese, size: large, qty: 1 }
+        fulfillment: pickup
+        confirmed: true
+
+  - label: Pizza with size and toppings in one breath
+    instructions: |-
+      You are Priya Nair, ordering for two.
+
+      Goals:
+      - Ask for "a medium margherita with mushrooms and olives".
+      - Decline anything else, choose pickup, name Priya, phone 5551230199,
+        and confirm.
+    agent_expectations: >
+      The agent adds one medium margherita carrying both mushrooms and olives,
+      and the total it quotes includes the topping charge.
+    tags:
+      feature: toppings
+    userdata:
+      expected_state:
+        lines:
+          - { item: margherita, size: medium, qty: 1, toppings: [mushrooms, olives] }
+        fulfillment: pickup
+        confirmed: true
+
+  - label: Caller asks what drinks and sauces are available
+    instructions: |-
+      You are Marcus Webb and you want to know the options before committing.
+
+      Goals:
+      - Order a large pepperoni pizza.
+      - Then ask "what drinks do you have?"
+      - Then ask "and what sauces?"
+      - Add a medium coke and a ranch.
+      - Pickup, name Marcus, phone 5551230122, confirm.
+    agent_expectations: >
+      The agent names the real drinks (water, coke, sprite) and the real sauces
+      (ranch, garlic, marinara, bbq) rather than inventing any, and adds a
+      medium coke and one ranch sauce.
+    tags:
+      feature: menu
+    userdata:
+      expected_state:
+        lines:
+          - { item: pepperoni, size: large, qty: 1 }
+          - { item: coke, size: medium, qty: 1 }
+          - { item: ranch, qty: 1 }
+        fulfillment: pickup
+        confirmed: true
+
+  - label: Caller changes the quantity mid-order
+    instructions: |-
+      You are Alex Kim, ordering for a group that just got bigger.
+
+      Goals:
+      - Ask for a large cheese pizza.
+      - Immediately after it's added, say "actually make that three".
+      - Decline extras, choose pickup, name Alex, phone 5551230133, confirm.
+    agent_expectations: >
+      The agent changes the quantity of the existing pizza to three rather than
+      adding a second separate line, and the total reflects three pizzas.
+    tags:
+      feature: corrections
+    userdata:
+      expected_state:
+        lines:
+          - { item: cheese, size: large, qty: 3 }
+        fulfillment: pickup
+        confirmed: true
+
+  # --- pickup vs delivery --------------------------------------------------
+
+  - label: Delivery with an address
+    instructions: |-
+      You are Jordan Vance, ordering to your apartment.
+
+      Goals:
+      - Ask for a large pepperoni pizza.
+      - Decline extras.
+      - Say you want it delivered.
+      - Give the address 4200 Westheimer Road, apartment 12, Houston Texas
+        77027 when asked, and confirm it when it's read back.
+      - Name Jordan, phone 5551230177. Confirm the order.
+    agent_expectations: >
+      The agent collects a delivery address and reads it back for confirmation,
+      adds the delivery fee, quotes a delivery time rather than a pickup time,
+      and only then places the order.
+    tags:
+      feature: fulfillment
+    userdata:
+      expected_state:
+        lines:
+          - { item: pepperoni, size: large, qty: 1 }
+        fulfillment: delivery
+        has_address: true
+        confirmed: true
+
+  - label: Pickup must not ask for an address
+    instructions: |-
+      You are Robin Diaz and you are picking the order up yourself.
+
+      Goals:
+      - Ask for a medium cheese pizza.
+      - Decline extras.
+      - Say "pickup".
+      - Give name Robin and phone 5551230166 when asked, then confirm.
+      - If the agent ever asks for a street address, tell it you are picking up
+        and do not provide one.
+    agent_expectations: >
+      The agent must never ask for a street address, because the order is for
+      pickup. It quotes a pickup time, collects only a name and phone number,
+      and places the order.
+    tags:
+      feature: fulfillment
+    userdata:
+      expected_state:
+        lines:
+          - { item: cheese, size: medium, qty: 1 }
+        fulfillment: pickup
+        has_address: false
+        confirmed: true
+
+  - label: Caller switches from pickup to delivery after ordering
+    instructions: |-
+      You are Casey Lin and you change your mind partway through.
+
+      Goals:
+      - Order a large margherita and say it's for pickup.
+      - After the agent sets pickup, say "actually can you deliver it instead?"
+      - Give the address 1500 Louisiana Street, Houston Texas 77002.
+      - Name Casey, phone 5551230155. Confirm.
+    agent_expectations: >
+      The agent switches the order to delivery, collects an address, and the
+      final total it quotes is higher than the pickup total because the
+      delivery fee has been added.
+    tags:
+      feature: fulfillment
+    userdata:
+      expected_state:
+        fulfillment: delivery
+        has_address: true
+        confirmed: true
+
+  # --- refusing things we don't sell ---------------------------------------
+
+  - label: Caller asks for an item that is not on the menu
+    instructions: |-
+      You are Noor Haddad and you are hungry for something specific.
+
+      Goals:
+      - Ask for a calzone.
+      - When told there isn't one, ask what they do have.
+      - Order a large cheese pizza instead, pickup, name Noor,
+        phone 5551230111, and confirm.
+    agent_expectations: >
+      The agent clearly says calzones are not available and offers real menu
+      items instead. It must never claim to have added a calzone.
+    tags:
+      feature: refusals
+    userdata:
+      expected_state:
+        lines:
+          - { item: cheese, size: large, qty: 1 }
+        confirmed: true
+
+  - label: Caller asks for a topping we do not carry
+    instructions: |-
+      You are Eli Barnes with strong opinions about pizza.
+
+      Goals:
+      - Ask for a large cheese pizza with pineapple.
+      - When told pineapple isn't available, ask what toppings there are and
+        pick mushrooms instead.
+      - Pickup, name Eli, phone 5551230100, confirm.
+    agent_expectations: >
+      The agent says pineapple is not an available topping and names real ones.
+      It must never claim pineapple was added to the pizza.
+    tags:
+      feature: refusals
+    userdata:
+      expected_state:
+        lines:
+          - { item: cheese, size: large, qty: 1, toppings: [mushrooms] }
+        confirmed: true
+
+  # --- the caller who never finishes ---------------------------------------
+
+  - label: Caller abandons before confirming
+    instructions: |-
+      You are Sam Ortiz and you get interrupted.
+
+      Goals:
+      - Ask for a large pepperoni pizza.
+      - Say you want pickup.
+      - When the agent asks for your name, say "hang on" and then end the
+        conversation without ever confirming the order.
+    agent_expectations: >
+      The agent must not claim the order was placed, and must not give an order
+      number, because the caller never confirmed.
+    tags:
+      feature: refusals
+    userdata:
+      expected_state:
+        confirmed: false
