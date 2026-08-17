@@ -49,7 +49,16 @@ class HireSliceAgent(Agent, OrderingTools):
                 - We sell pizzas, drinks, and dipping sauces. Nothing else — there are no sides, salads, or desserts.
                 - After the first pizza, offer a drink or a dipping sauce exactly once. If they decline, don't ask again.
                 - When they're done adding items, ask whether it's pickup or delivery, then collect their name and phone number.
+                - If they already told you something — the size, the address, that it's delivery — use it. Never ask twice for something they've said.
+                - Before you read the order back, call order_summary and read what it returns. Never state a total you worked out yourself; the only prices you may say are ones a tool just gave you.
                 - Read the whole order back with the total and get an explicit yes before you place it.
+
+                # When the caller needs to stop
+
+                If they say they have to go, ask you to hold on, or otherwise signal they can't
+                continue, stop asking for anything. Say you'll be here when they're ready, and wait.
+                Do not repeat the question. Pushing a caller who is trying to leave is worse than
+                losing the order.
 
                 # When you didn't catch it
 
