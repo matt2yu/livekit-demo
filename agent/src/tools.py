@@ -214,10 +214,22 @@ class OrderingTools:
                 f"Total {speak_price(order.total)}. | next: collect their name and phone number"
             )
 
-        result = await GetAddressTask(
-            extra_instructions="This is a pizza delivery address. Include an apartment or unit number if there is one.",
-            require_confirmation=True,
-        )
+        try:
+            result = await GetAddressTask(
+                extra_instructions="This is a pizza delivery address. Include an apartment or unit number if there is one.",
+                require_confirmation=True,
+            )
+        except Exception:
+            # The nested task can be cancelled mid-capture. Roll fulfillment back so
+            # the order isn't left as delivery-with-no-address, and let the agent
+            # recover by asking again rather than dying here.
+            order.fulfillment = None
+            logger.warning("address capture did not complete", exc_info=True)
+            raise ToolError(
+                "The address didn't come through. Apologize, then ask whether they want "
+                "delivery or pickup and try again."
+            ) from None
+
         order.address = result.address
         return (
             f"Delivering to {result.address}, {DELIVERY_ETA}. "
