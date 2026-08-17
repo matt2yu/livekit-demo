@@ -22,13 +22,31 @@ def _describe(order: Order) -> str:
     )
 
 
+def _describe_want(want: dict) -> str:
+    return f"{want.get('size', '')} {want['item']}".strip()
+
+
 def _line_problems(order: Order, expected_lines: list[dict]) -> list[str]:
     problems: list[str] = []
+    # An order can hold a small and a large of the same pizza, so a line is
+    # claimed once it's matched. Matching on the item name alone would score both
+    # expectations against whichever line came first — the same mistake that made
+    # a removal take the wrong pizza.
+    unclaimed = list(order.lines)
     for want in expected_lines:
-        match = next((line for line in order.lines if line.item == want["item"]), None)
+        match = next(
+            (
+                line
+                for line in unclaimed
+                if line.item == want["item"]
+                and ("size" not in want or line.size == want["size"])
+            ),
+            None,
+        )
         if match is None:
-            problems.append(f"missing {want['item']}")
+            problems.append(f"missing {_describe_want(want)}")
             continue
+        unclaimed.remove(match)
         if "size" in want and match.size != want["size"]:
             problems.append(
                 f"{want['item']} size {match.size}, expected {want['size']}"
