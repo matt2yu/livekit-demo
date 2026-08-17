@@ -1,0 +1,38 @@
+{
+  "name": "hire-slice",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Voice agent that takes pizza orders over phone and web, backed by Supabase — Python agent + Next.js frontend",
+  "scripts": {
+    "setup": "pnpm install:frontend && pnpm install:agent && pnpm env:copy",
+    "install:frontend": "pnpm --dir frontend install",
+    "install:agent": "uv --directory agent sync",
+    "env:copy": "test -f frontend/.env.local || cp frontend/.env.example frontend/.env.local; test -f agent/.env.local || cp agent/.env.example agent/.env.local",
+
+    "dev": "concurrently -n agent,frontend -c cyan,magenta \"pnpm dev:agent\" \"pnpm dev:frontend\"",
+    "dev:agent": "lk agent dev agent/src/agent.py",
+    "dev:frontend": "pnpm --dir frontend dev",
+
+    "agent:console": "uv --directory agent run src/agent.py console",
+    "agent:start": "uv --directory agent run src/agent.py start",
+    "agent:download-files": "uv --directory agent run src/agent.py download-files",
+    "agent:deploy": "lk agent create ./agent",
+
+    "build": "pnpm --dir frontend build",
+    "start:frontend": "pnpm --dir frontend start",
+
+    "lint": "concurrently -n agent,frontend -c cyan,magenta \"pnpm lint:agent\" \"pnpm lint:frontend\"",
+    "lint:agent": "uv --directory agent run ruff check .",
+    "lint:frontend": "pnpm --dir frontend lint",
+    "format": "uv --directory agent run ruff format . && pnpm --dir frontend format",
+
+    "test": "uv --directory agent run pytest"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22"
+  }
+}
