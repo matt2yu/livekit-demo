@@ -1,6 +1,6 @@
 import pytest
 
-from menu import DELIVERY_FEE, speak_price
+from menu import DELIVERY_FEE, serves, speak_price
 from order import AmbiguousItemError, Line, Order
 
 
@@ -322,3 +322,33 @@ def test_growing_past_the_threshold_reopens_the_requirements():
     assert order.missing_for_confirm() == []
     order.set_quantity("cheese", 40)
     assert "a deposit" in order.missing_for_confirm()
+
+
+# --- where we deliver ---------------------------------------------------------
+#
+# The delivery area is data, the same way the menu is. A ZIP is not a radius —
+# that trade is recorded in menu.py — but an unserviceable address can't be
+# accepted by accident.
+
+
+@pytest.mark.parametrize(
+    ("address", "served"),
+    [
+        ("1234 Chimney Rock, Houston, TX 77096", True),
+        ("5150 Braeswood Boulevard, Houston Texas 77035", True),
+        ("3300 Chimney Rock Road, Houston Texas 77081", True),
+        # ZIP+4 must not be read as a different ZIP
+        ("5000 Beechnut St, Houston TX 77096-1234", True),
+        ("1500 Louisiana Street, Houston Texas 77002", False),
+        ("4200 Westheimer Road, Houston TX 77027", False),
+        # A five-digit house number is not the ZIP
+        ("12345 Braeswood Blvd, Houston TX 77035", True),
+        # The trailing group is the ZIP: a served number appearing earlier in the
+        # line must not smuggle an unserved address through.
+        ("77096 Apartments, 1500 Louisiana Street, Houston Texas 77002", False),
+        ("no zip at all, Houston", False),
+        ("", False),
+    ],
+)
+def test_delivery_area_is_decided_by_the_zip(address, served):
+    assert serves(address) is served

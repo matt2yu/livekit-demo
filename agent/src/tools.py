@@ -30,10 +30,13 @@ from menu import (
     PICKUP_ETA,
     PIZZAS,
     SAUCES,
+    SHOP_ADDRESS,
+    SHOP_CROSS_STREET,
     SIZES,
     TOPPINGS,
     Size,
     menu_summary,
+    serves,
     speak_price,
 )
 from order import AmbiguousItemError, Line, Order, order_code
@@ -48,6 +51,7 @@ SizeName = Annotated[Size, Field(json_schema_extra={"enum": list(SIZES)})]
 # Optional because the size is only needed to break a tie. See the note on
 # _strict_tool_schema in agent.py for why this can't be `SizeName | None`.
 OptionalSizeName = Annotated[str, Field(json_schema_extra={"enum": list(SIZES)})]
+InfoTopic = Annotated[str, Field(json_schema_extra={"enum": ["menu", "location"]})]
 OrderedName = Annotated[
     str, Field(json_schema_extra={"enum": [*PIZZAS, *DRINKS, *SAUCES]})
 ]
@@ -71,6 +75,17 @@ class Userdata:
     @property
     def channel(self) -> str:
         return "phone" if (self.room or "").startswith("call-") else "web"
+
+
+def _category_of(item: str) -> str | None:
+    """Which table an item came from. No name appears in two, so this is exact."""
+    if item in PIZZAS:
+        return "pizza"
+    if item in DRINKS:
+        return "drink"
+    if item in SAUCES:
+        return "sauce"
+    return None
 
 
 def _options(names) -> str:
@@ -129,7 +144,7 @@ def _added(order: Order, line: Line) -> str:
         return said + (
             f"That is {order.item_count} items, which is a catering order. "
             f"| next: tell them an order this size needs {order.lead_time} and ask "
-            f"what time they would like it, then call schedule_catering"
+            f"what time they would like it, then call book_catering"
         )
     return said + _NEXT
 
@@ -144,112 +159,71 @@ def _which_one(exc: AmbiguousItemError) -> ToolError:
 
 class OrderingTools:
     @function_tool
-    async def get_menu(self, ctx: RunContext[Userdata]) -> str:
-        """Read out what Hire Slice sells. Use when the caller asks what's available,
-        what the options are, or how much something costs."""
+    async def get_info(self, ctx: RunContext[Userdata], about: InfoTopic) -> str:
+        """Read out what the caller asked about.
+
+        Args:
+            about: "menu" for what we sell and what it costs, "location" for where
+                the shop is and where to collect a pickup order.
+        """
+        if about == "location":
+            return f"We're at {SHOP_ADDRESS}, {SHOP_CROSS_STREET}."
         return menu_summary()
 
     @function_tool
-    async def add_pizza(
+    async def add_item(
         self,
         ctx: RunContext[Userdata],
-        name: PizzaName,
-        size: SizeName,
+        item: OrderedName,
+        size: OptionalSizeName = "",
         toppings: list[ToppingName] | None = None,
         qty: int = 1,
     ) -> str:
-        """Add a pizza to the order.
+        """Put something on the order — a pizza, a drink, or a dipping sauce.
 
-        Ask for the size before calling this — never guess one. Examples:
-        "a large pepperoni", "two small cheese pizzas with mushrooms".
+        Ask for the size before calling this for a pizza or a drink; never guess one.
+        Sauces come in one size, so leave it out for those. Examples: "a large
+        pepperoni", "two small cheese with mushrooms", "a ranch".
 
         Args:
-            name: Which pizza.
-            size: small, medium, or large.
-            toppings: Extra toppings beyond what the pizza already comes with.
-            qty: How many of this exact pizza.
+            item: Which pizza, drink, or sauce.
+            size: small, medium, or large. Required for pizzas and drinks, and not
+                used for sauces.
+            toppings: Extra toppings, pizzas only.
+            qty: How many of this exact item.
         """
-        _guard_quantity(ctx, ("pizza", name, size, tuple(toppings or ()), qty), qty)
-        if name not in PIZZAS:
-            raise ToolError(f"We don't have {name}. We have {_options(PIZZAS)}.")
+        category = _category_of(item)
+        if category is None:
+            raise ToolError(f"We don't have {item}. We have {menu_summary()}")
+
+        # The item enum still makes an off-menu order unexpressible; what a single
+        # tool can't say in the schema is that a pizza needs a size and a sauce
+        # doesn't, so that check lives here instead.
+        if category in ("pizza", "drink") and not size:
+            raise ToolError(
+                f"What size {item}? Ask them, then call this again with the size."
+            )
+        if toppings and category != "pizza":
+            raise ToolError(f"Toppings only go on pizzas, not on {item}.")
         for topping in toppings or ():
             if topping not in TOPPINGS:
                 raise ToolError(
                     f"We don't have {topping} as a topping. We have {_options(TOPPINGS)}."
                 )
 
+        _guard_quantity(ctx, (category, item, size, tuple(toppings or ()), qty), qty)
+
         order = ctx.userdata.order
         line = order.add(
-            Line("pizza", name, size=size, toppings=tuple(toppings or ()), qty=qty)
+            Line(
+                category,
+                item,
+                size=size or None,
+                toppings=tuple(toppings or ()),
+                qty=qty,
+            )
         )
         return _added(order, line)
-
-    @function_tool
-    async def add_drink(
-        self,
-        ctx: RunContext[Userdata],
-        name: DrinkName,
-        size: SizeName,
-        qty: int = 1,
-    ) -> str:
-        """Add a drink. Ask for the size before calling this.
-
-        Args:
-            name: Which drink.
-            size: small, medium, or large.
-            qty: How many.
-        """
-        _guard_quantity(ctx, ("drink", name, size, qty), qty)
-        if name not in DRINKS:
-            raise ToolError(f"We don't have {name}. We have {_options(DRINKS)}.")
-
-        order = ctx.userdata.order
-        line = order.add(Line("drink", name, size=size, qty=qty))
-        return _added(order, line)
-
-    @function_tool
-    async def add_sauce(
-        self,
-        ctx: RunContext[Userdata],
-        name: SauceName,
-        qty: int = 1,
-    ) -> str:
-        """Add a dipping sauce. Sauces come in one size.
-
-        Args:
-            name: Which sauce.
-            qty: How many.
-        """
-        _guard_quantity(ctx, ("sauce", name, qty), qty)
-        if name not in SAUCES:
-            raise ToolError(f"We don't have {name} sauce. We have {_options(SAUCES)}.")
-
-        order = ctx.userdata.order
-        line = order.add(Line("sauce", name, qty=qty))
-        return _added(order, line)
-
-    @function_tool
-    async def remove_item(
-        self,
-        ctx: RunContext[Userdata],
-        name: OrderedName,
-        size: OptionalSizeName = "",
-    ) -> str:
-        """Take something off the order. Use when the caller changes their mind.
-
-        Args:
-            name: The item already on the order.
-            size: Only needed when that item is on the order in more than one
-                size. Leave it out otherwise.
-        """
-        order = ctx.userdata.order
-        try:
-            removed = order.remove(name, size or None)
-        except AmbiguousItemError as exc:
-            raise _which_one(exc) from None
-        if removed is None:
-            raise ToolError(f"There's no {size or ''} {name} on the order.".strip())
-        return f"Removed {removed.spoken()}. Running total {speak_price(order.total)}. {_NEXT}"
 
     @function_tool
     async def set_quantity(
@@ -259,11 +233,13 @@ class OrderingTools:
         qty: int,
         size: OptionalSizeName = "",
     ) -> str:
-        """Change how many of something is on the order — "actually make that two".
+        """Change how many of something is on the order, or take it off entirely.
+
+        "Actually make that two" is qty two; "drop the cheese pizza" is qty zero.
 
         Args:
             name: The item already on the order.
-            qty: The new count. Zero removes it.
+            qty: The new count. Zero takes it off the order.
             size: Only needed when that item is on the order in more than one
                 size. Leave it out otherwise.
         """
@@ -322,8 +298,13 @@ class OrderingTools:
 
         try:
             result = await GetAddressTask(
-                extra_instructions="This is a pizza delivery address. Include an apartment or unit number if there is one.",
+                extra_instructions=(
+                    "This is a pizza delivery address. Include an apartment or unit "
+                    "number if there is one. If they have already given an address "
+                    "earlier in this call, use it rather than asking again."
+                ),
                 require_confirmation=True,
+                chat_ctx=ctx.session.chat_ctx,
             )
         except Exception:
             # The nested task can be cancelled mid-capture. Roll fulfillment back so
@@ -335,6 +316,15 @@ class OrderingTools:
                 "The address didn't come through. Apologize, then ask whether they want "
                 "delivery or pickup and try again."
             ) from None
+
+        if not serves(result.address):
+            order.fulfillment = None
+            order.address = None
+            raise ToolError(
+                f"We don't deliver to {result.address}. Tell them it's outside our "
+                f"delivery area, that they're welcome to collect from "
+                f"{SHOP_ADDRESS}, and ask whether they'd like pickup instead."
+            )
 
         order.address = result.address
         return (
@@ -349,10 +339,39 @@ class OrderingTools:
         and fulfillment are settled and before confirming."""
         order = ctx.userdata.order
 
-        name = await GetNameTask(first_name=True)
+        # No confirmation on the name: reading a first name back is a step callers
+        # find odd, and a misheard name is a cosmetic error on a pizza ticket. The
+        # phone number and the address are confirmed, because those are the ones
+        # that cost something when they are wrong.
+        name = await GetNameTask(
+            first_name=True,
+            require_confirmation=False,
+            # Without the chat context the task runs blind — it cannot see that the
+            # caller opened with "hi, it's Dana", so it asks for a name they already
+            # gave. The docs are explicit: omit this and the task has no memory of
+            # the session.
+            chat_ctx=ctx.session.chat_ctx,
+            extra_instructions=(
+                "If they have already said their name earlier in this call, use it "
+                "and don't ask again. Only ask if you don't have it."
+            ),
+        )
         order.customer_name = name.first_name
 
-        phone = await GetPhoneNumberTask(require_confirmation=True)
+        # On a phone call we already know the number — it came from the carrier,
+        # not from the caller. Offering it beats making them recite it.
+        known = ctx.userdata.caller_id
+        phone = await GetPhoneNumberTask(
+            require_confirmation=True,
+            chat_ctx=ctx.session.chat_ctx,
+            extra_instructions=(
+                f"They are calling from {known}. Offer that number back and ask if "
+                f"it's the best one for this order, rather than asking them to say a "
+                f"number. Only collect a different one if they say so."
+            )
+            if known
+            else "",
+        )
         order.phone_number = phone.phone_number
 
         return (
@@ -361,9 +380,13 @@ class OrderingTools:
         )
 
     @function_tool
-    async def schedule_catering(self, ctx: RunContext[Userdata], when: str) -> str:
-        """Book a catering order for a time. Only for orders large enough that a tool
-        has told you they are catering.
+    async def book_catering(self, ctx: RunContext[Userdata], when: str) -> str:
+        """Book a large order for a time and hold it for a deposit. Only for orders a
+        tool has told you are catering.
+
+        Booking and holding are one step because they are never useful apart: a time
+        with no deposit is an unpaid promise, and a deposit with no time is a mystery
+        for the kitchen.
 
         Args:
             when: The time the caller asked for, in their own words — "tomorrow at
@@ -374,37 +397,27 @@ class OrderingTools:
             raise ToolError(
                 "This order isn't large enough to need booking. Carry on as normal."
             )
-        order.scheduled_for = when
-        return (
-            f"Booked for {when}. | next: tell them a deposit is needed to hold a "
-            f"catering order, and call send_deposit_link"
-        )
-
-    @function_tool
-    async def send_deposit_link(self, ctx: RunContext[Userdata]) -> str:
-        """Text the caller a link to pay the deposit on a catering order. Use their
-        collected phone number — never ask for card details on the call."""
-        order = ctx.userdata.order
-        if not order.is_catering:
-            raise ToolError("No deposit is needed for an order this size.")
-        # Prefer the verified caller ID over the spoken one. A prank order is only
-        # worth placing if the deposit can be aimed at whoever actually rang.
-        send_to = ctx.userdata.caller_id or order.phone_number
-        if not send_to:
+        # Prefer the number the call came from over the one they spoke: a prank order
+        # is only worth taking if the deposit can be aimed at whoever actually rang.
+        contact = ctx.userdata.caller_id or order.phone_number
+        if not contact:
             raise ToolError(
-                "Collect their phone number first — the link has to go somewhere."
+                "Collect their phone number first — a deposit needs somewhere to go."
             )
-        # Stubbed. A real send is an HTTP call to a messaging provider from here,
-        # the same shape as orders_db: LiveKit has no SMS of its own, its telephony
-        # is SIP voice. Sent is not paid — see Order.deposit_link_sent.
+
+        order.scheduled_for = when
+        # Records that a deposit is owed against a number we can reach, and nothing
+        # more. No payment has been requested from here, so the agent must not say
+        # one has. Order.deposit_paid stays false until a provider says otherwise.
         order.deposit_link_sent = True
         logger.info(
-            "deposit link queued",
-            extra={"to": send_to, "verified": ctx.userdata.caller_id is not None},
+            "catering booked pending deposit",
+            extra={"when": when, "verified": ctx.userdata.caller_id is not None},
         )
         return (
-            "Deposit link sent to their number. | next: read the order back with the "
-            "time, and get an explicit yes before confirming"
+            f"Booked for {when}, held pending a deposit we'll arrange on {contact}. "
+            f"| next: tell them it's held and a deposit secures it, then read the "
+            f"order back with the time and get an explicit yes before confirming"
         )
 
     @function_tool

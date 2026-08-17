@@ -31,7 +31,7 @@ def _line_problems(order: Order, expected_lines: list[dict]) -> list[str]:
     # An order can hold a small and a large of the same pizza, so a line is
     # claimed once it's matched. Matching on the item name alone would score both
     # expectations against whichever line came first — the same mistake that made
-    # remove_item take the wrong pizza.
+    # a removal take the wrong pizza.
     unclaimed = list(order.lines)
     for want in expected_lines:
         match = next(

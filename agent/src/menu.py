@@ -6,6 +6,7 @@ kitchen can't make never reaches the model as a valid choice.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -60,6 +61,46 @@ TOPPINGS: dict[str, FlatItem] = {
     "sausage": FlatItem("sausage", 1.50),
     "extra cheese": FlatItem("extra cheese", 1.50),
 }
+
+# A fictional shop. The address is invented — it is not a real business — but it
+# sits in 77096 so the delivery area below is geographically coherent.
+SHOP_NAME = "Hire Slice"
+SHOP_ADDRESS = "4715 Beechnut Street, Houston, Texas 77096"
+SHOP_CROSS_STREET = "just off South Braeswood"
+
+# Where we deliver, as data rather than as a hope the model gets it right — the
+# same reason the menu drives the tool enums.
+#
+# The honest limit: a ZIP is not a radius. These are the ring around the shop,
+# roughly five miles, which is what the forty-five minute delivery estimate can
+# actually support. A production version swaps this set for a geocoder and a real
+# distance check, which is one function — the rest of the design does not move.
+DELIVERY_ZIPS = frozenset(
+    {
+        "77096",  # the shop itself
+        "77035",
+        "77071",
+        "77074",
+        "77401",
+        "77025",
+        "77081",
+        "77045",
+        "77031",
+    }
+)
+
+_ZIP = re.compile(r"\b(\d{5})(?:-\d{4})?\b")
+
+
+def serves(address: str) -> bool:
+    """Whether we deliver to this address.
+
+    Matches the last five-digit group: house numbers run to five digits often
+    enough that taking the first one would refuse real addresses.
+    """
+    found = _ZIP.findall(address)
+    return bool(found) and found[-1] in DELIVERY_ZIPS
+
 
 DELIVERY_FEE = 3.99
 
@@ -151,7 +192,7 @@ def _say_number(n: int) -> str:
 
 
 def menu_summary() -> str:
-    """Speak-friendly menu, used by the get_menu tool."""
+    """Speak-friendly menu, used by the get_info tool."""
     pizzas = ", ".join(p.name for p in PIZZAS.values())
     drinks = ", ".join(d.name for d in DRINKS.values())
     sauces = ", ".join(s.name for s in SAUCES.values())

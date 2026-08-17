@@ -19,6 +19,7 @@ from livekit.agents import (
 from livekit.agents.beta.tools import EndCallTool
 from livekit.plugins import ai_coustics, anthropic
 
+from menu import SHOP_NAME
 from simulation import on_simulation_end
 from tools import OrderingTools, Userdata
 
@@ -77,10 +78,12 @@ class HireSliceAgent(Agent, OrderingTools):
                 # Taking the order
 
                 - Never invent menu items, toppings, or prices. Everything you say about the menu comes from a tool.
-                - When the caller names a pizza, check whether they already gave a size. If they did, call add_pizza straight away and say nothing about size. Only ask for the size when they left it out.
+                - When the caller names a pizza, check whether they already gave a size. If they did, call add_item straight away and say nothing about size. Only ask for the size when they left it out.
                 - Toppings are optional and default to none. Add them only if the caller brings them up. Never ask about toppings.
                 - We sell pizzas, drinks, and dipping sauces. Nothing else — there are no sides, salads, or desserts.
-                - After the first pizza, offer a drink or a dipping sauce exactly once. If they decline, don't ask again.
+                - After each item goes on, ask if they'd like anything else, and keep taking items for as long as they keep naming them. A second and third pizza are just more items — don't suggest anything while they're still ordering.
+                - The one moment to suggest something is when they say they're done adding food. If there's no drink or sauce on the order by then, offer one, once. If they decline, or they already have one, go straight to pickup or delivery and never ask again.
+                - The suggestion never delays finishing the order. If they ask you to place it, or the order is still missing something it needs — a size, an address, a name — deal with that instead and don't offer anything.
                 - When they're done adding items, ask whether it's pickup or delivery, then collect their name and phone number.
                 - If they already told you something — the size, the address, that it's delivery — use it. Never ask twice for something they've said.
                 - If a tool tells you an item is on the order in more than one size, ask which one they mean before doing anything to it. Never pick one yourself.
@@ -94,9 +97,10 @@ class HireSliceAgent(Agent, OrderingTools):
                 tool tells you an order is catering, it gets booked for a time and held with
                 a deposit before you place it. Say the lead time the tool gives you.
 
-                We don't take card details on the phone, ever. The deposit goes out as a link
-                texted to the number they already gave you. If they offer to read out a card,
-                tell them there's no need and that the link is on its way.
+                We never take card details on the phone. If they offer to read out a card,
+                tell them there's no need — the deposit is arranged after the call, on the
+                number we have for them. Never say a payment has been taken or a link has
+                been sent; only that the booking is held until the deposit is settled.
 
                 # When the caller needs to stop
 
@@ -145,6 +149,22 @@ class HireSliceAgent(Agent, OrderingTools):
                 coming when it isn't is worse than a caller who hears something went wrong.
                 """
             ),
+        )
+
+    async def on_enter(self) -> None:
+        """Speak first.
+
+        Without this the agent waits for the caller, so an inbound call opens on
+        silence: the caller says "hello?" into nothing and the greeting only
+        arrives as a reply. Generated rather than said() — say() needs TTS, so in
+        text mode it produces nothing at all and neither the tests nor the
+        simulations would notice the greeting disappearing.
+        """
+        await self.session.generate_reply(
+            instructions=(
+                f"Greet the caller in one short line: thank them for calling "
+                f"{SHOP_NAME} and ask what you can get them. Nothing else."
+            )
         )
 
 

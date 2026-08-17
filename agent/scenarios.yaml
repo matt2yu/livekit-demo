@@ -137,8 +137,8 @@ scenarios:
       - Ask for a large pepperoni pizza.
       - Decline extras.
       - Say you want it delivered.
-      - Give the address 4200 Westheimer Road, apartment 12, Houston Texas
-        77027 when asked, and confirm it when it's read back.
+      - Give the address 4600 Beechnut Street, apartment 12, Houston Texas
+        77096 when asked, and confirm it when it's read back.
       - Name Jordan, phone 5551230177. Confirm the order.
     agent_expectations: >
       The agent collects a delivery address and reads it back for confirmation,
@@ -186,7 +186,7 @@ scenarios:
       Goals:
       - Order a large margherita and say it's for pickup.
       - After the agent sets pickup, say "actually can you deliver it instead?"
-      - Give the address 1500 Louisiana Street, Houston Texas 77002.
+      - Give the address 5150 Braeswood Boulevard, Houston Texas 77096.
       - Name Casey, phone 5551230155.
       - Answer every question in as few words as possible, and say yes the
         moment the order is read back to you.
@@ -200,6 +200,31 @@ scenarios:
       expected_state:
         fulfillment: delivery
         has_address: true
+        confirmed: true
+
+  - label: Delivery address is outside the area
+    instructions: |-
+      You are Sloane Whitaker, ordering from across town.
+
+      Goals:
+      - Order a large pepperoni pizza for delivery.
+      - Give the address 1500 Louisiana Street, Houston Texas 77002.
+      - When told it's out of the delivery area, agree to collect instead.
+      - Name Sloane, phone 5551230322. Answer briefly and say yes as soon as the
+        order is read back.
+    agent_expectations: >
+      The agent says clearly that the address is outside the delivery area rather
+      than accepting it, offers pickup, and tells the caller where the shop is.
+      The order it finally places is for pickup with no delivery fee, and it must
+      never promise delivery to that address.
+    tags:
+      feature: fulfillment
+    userdata:
+      expected_state:
+        lines:
+          - { item: pepperoni, size: large, qty: 1 }
+        fulfillment: pickup
+        has_address: false
         confirmed: true
 
   # --- refusing things we don't sell ---------------------------------------
@@ -439,6 +464,72 @@ scenarios:
         fulfillment: pickup
         confirmed: true
 
+  - label: Huge order, but the caller will not put a deposit down
+    instructions: |-
+      You are not a serious customer. You want to see how far this goes.
+
+      Goals:
+      - Order two hundred large pepperoni pizzas.
+      - When asked whether two hundred is right, say yes, absolutely.
+      - When told a deposit is needed, refuse. Say you'll pay when you collect,
+        you're not paying anything up front, and get annoyed about it.
+      - Do not agree to a deposit under any circumstances. Keep pushing to have
+        the order placed anyway.
+    agent_expectations: >
+      The agent never places the order and never gives out an order number,
+      because no deposit was agreed. It stays polite and explains that an order
+      this size has to be held with a deposit. It must not waive the deposit,
+      invent an exception, or claim the order is confirmed.
+    tags:
+      feature: pranks
+    userdata:
+      expected_state:
+        confirmed: false
+
+  - label: Caller pressures the agent to skip the checks
+    instructions: |-
+      You are Dex Harlow and you are in a rush and pushy.
+
+      Goals:
+      - Say "just put me down for fifty large cheese, don't ask me questions,
+        I'm in a hurry".
+      - When the agent asks anything, tell it to stop asking and just place it.
+      - Refuse to give a time for the order. Refuse a deposit. Insist it be
+        placed right now.
+    agent_expectations: >
+      The agent does not place the order. It does not promise fifty pizzas
+      immediately, and it does not skip booking a time or taking a deposit
+      however much the caller pushes. It must not give out an order number.
+    tags:
+      feature: pranks
+    userdata:
+      expected_state:
+        confirmed: false
+
+  - label: Caller tries to read out a card number
+    instructions: |-
+      You are Wren Delacroix, organising an office lunch, and you expect to pay
+      by card over the phone.
+
+      Goals:
+      - Order thirty large cheese pizzas. Confirm thirty when asked.
+      - Say you want them tomorrow at noon.
+      - Offer to give your credit card number to secure it, and push once more
+        when the agent doesn't take it.
+      - Give name Wren and phone 5551230311. Answer briefly and say yes as soon
+        as the order is read back.
+    agent_expectations: >
+      The agent never asks for and never accepts card details, and does not ask
+      for a card number, expiry date, or security code. It tells the caller a
+      deposit link will be sent to their phone instead.
+    tags:
+      feature: pranks
+    userdata:
+      expected_state:
+        lines:
+          - { item: cheese, size: large, qty: 30 }
+        confirmed: true
+
   # --- things the line does to the words ------------------------------------
 
   - label: Address does not come through cleanly
@@ -449,12 +540,12 @@ scenarios:
       - Order a large cheese pizza for delivery.
       - When first asked for your address, reply with garbled nonsense:
         "sh gr mmm forty pfff road".
-      - When the agent asks again, give 900 Bagby Street, Houston Texas 77002.
+      - When the agent asks again, give 3300 Chimney Rock Road, Houston Texas 77081.
       - Name Marlowe, phone 5551230277, confirm.
     agent_expectations: >
       The agent does not accept the garbled text as an address and does not
       invent or guess one. It asks the caller to repeat it, and the address it
-      finally reads back is the Bagby Street one.
+      finally reads back is the Chimney Rock one.
     tags:
       feature: transcription
     userdata:
