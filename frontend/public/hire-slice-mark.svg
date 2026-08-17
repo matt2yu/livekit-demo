@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-labelledby="hsMarkTitle">
+  <title id="hsMarkTitle">Hire Slice</title>
+  <defs><clipPath id="hsMarkClip"><circle cx="60" cy="60" r="52"/></clipPath></defs>
+  <circle cx="60" cy="60" r="58" fill="#C6362B"/>
+  <circle cx="60" cy="60" r="52" fill="#F6E7C6"/>
+  <g clip-path="url(#hsMarkClip)">
+    <path d="M12 122 q6-30 48-34 q42 4 48 34 Z" fill="#8E8177" stroke="#3B2B25" stroke-width="4" stroke-linejoin="round"/>
+    <circle cx="60" cy="62" r="40" fill="#F5CFA8" stroke="#3B2B25" stroke-width="4"/>
+    <path d="M17 58 q-1-36 43-36 q44 0 43 36 q-8-17-23-20 q-23 9-45 3 q-12 5-18 17 Z" fill="#241A17"/>
+    <path d="M36 51 q9-6 18-1" fill="none" stroke="#241A17" stroke-width="4" stroke-linecap="round"/>
+    <path d="M84 51 q-9-6-18-1" fill="none" stroke="#241A17" stroke-width="4" stroke-linecap="round"/>
+    <path d="M41 66 q7-6 14 0" fill="none" stroke="#241A17" stroke-width="4.4" stroke-linecap="round"/>
+    <path d="M65 66 q7-6 14 0" fill="none" stroke="#241A17" stroke-width="4.4" stroke-linecap="round"/>
+    <path d="M44 77 q16 18 32 0 Z" fill="#3B2B25"/>
+    <path d="M47 79 q13 5 26 0 Z" fill="#FFFFFF"/>
+    <path d="M44 77 q16 18 32 0" fill="none" stroke="#3B2B25" stroke-width="3.8" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="34" cy="79" r="4.8" fill="#E89C8A" opacity=".55"/>
+    <circle cx="86" cy="79" r="4.8" fill="#E89C8A" opacity=".55"/>
+  </g>
+  <circle cx="60" cy="60" r="58" fill="none" stroke="#8E2018" stroke-width="3"/>
+</svg>
