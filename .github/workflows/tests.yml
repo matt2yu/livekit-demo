@@ -1,9 +1,9 @@
 name: Tests
 
+# Pull requests only. 29 of these tests drive a real model, so a push-to-main
+# run would spend that again to re-prove exactly what the PR just proved — main
+# only moves through a merged PR, and the merge commit is the tested tree.
 on:
-  push:
-    branches: [ main ]
-    paths: ['agent/**', '.github/workflows/**']
   pull_request:
     branches: [ main ]
     paths: ['agent/**', '.github/workflows/**']

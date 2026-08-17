@@ -10,15 +10,21 @@ judge() is reserved for the cases where the requirement really is semantic.
 """
 
 import pytest
-from livekit.agents import AgentSession, mock_tools
-from livekit.plugins import anthropic
+from livekit.agents import AgentSession, inference, mock_tools
 
 from agent import HireSliceAgent, _llm
 from tools import Userdata
 
 
 def _judge():
-    return anthropic.LLM(model="claude-sonnet-4-6")
+    """Deciding whether a sentence matches an intent is not Sonnet-shaped work.
+
+    Roughly half the calls this suite makes are judgments. Running them on
+    LiveKit Inference — the model LiveKit's own testing docs judge with — keeps
+    them off the same key the agent bills to, and off a bill that is charged by
+    the token rather than drawn from an unused credit.
+    """
+    return inference.LLM(model="google/gemma-4-31b-it")
 
 
 def _session() -> AgentSession[Userdata]:
