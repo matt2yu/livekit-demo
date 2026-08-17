@@ -108,7 +108,13 @@ async def _confirm(userdata: Userdata):
 
     ctx = _Ctx(userdata)
     try:
-        return await OrderingTools.confirm_order._func(OrderingTools(), ctx), None, ctx
+        return (
+            await OrderingTools.confirm_order._func(
+                OrderingTools(), ctx, read_back=True
+            ),
+            None,
+            ctx,
+        )
     except ToolError as exc:
         return None, exc, ctx
 

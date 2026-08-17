@@ -16,7 +16,6 @@ from typing import Annotated
 
 from livekit.agents import RunContext, ToolError, function_tool
 from livekit.agents.beta.workflows import (
-    GetAddressTask,
     GetNameTask,
     GetPhoneNumberTask,
 )
@@ -276,61 +275,60 @@ class OrderingTools:
         return order.readback()
 
     @function_tool
-    async def set_fulfillment(self, ctx: RunContext[Userdata], method: str) -> str:
-        """Set the order to pickup or delivery.
+    async def set_fulfillment(
+        self, ctx: RunContext[Userdata], method: str, address: str = ""
+    ) -> str:
+        """Set the order to pickup or delivery, once the caller has said which.
 
-        For delivery this collects the address, so don't ask for the address yourself.
+        Only call this after they have answered. Never infer it — not from an address
+        they mentioned, not from the size of the order, not from a tool telling you
+        fulfillment is missing. If you don't know, ask; don't guess.
+
+        The address is a plain argument rather than a nested capture task. A nested task
+        can only hear addresses, so a caller who says "actually, pickup" mid-capture is
+        talking to something that cannot act on it — which is how one real order was
+        lost. Asking for an address is just a question; keep it in the conversation.
 
         Args:
-            method: Either "pickup" or "delivery".
+            method: Either "pickup" or "delivery", as the caller said it.
+            address: The delivery address, including any apartment or unit number.
+                Required for delivery; leave empty for pickup, or when they've said
+                delivery but haven't given the address yet.
         """
         if method not in ("pickup", "delivery"):
             raise ToolError('Fulfillment must be either "pickup" or "delivery".')
 
         order = ctx.userdata.order
-        order.fulfillment = method
 
         if method == "pickup":
+            order.fulfillment = "pickup"
+            order.address = None
             return (
                 f"Set to pickup, ready in {PICKUP_ETA}. "
                 f"Total {speak_price(order.total)}. | next: collect their name and phone number"
             )
 
-        try:
-            result = await GetAddressTask(
-                extra_instructions=(
-                    "This is a pizza delivery address. Include an apartment or unit "
-                    "number if there is one. If they have already given an address "
-                    "earlier in this call, use it rather than asking again."
-                ),
-                require_confirmation=True,
-                chat_ctx=self.chat_ctx,
-            )
-        except Exception:
-            # The nested task can be cancelled mid-capture. Roll fulfillment back so
-            # the order isn't left as delivery-with-no-address, and let the agent
-            # recover by asking again rather than dying here.
-            order.fulfillment = None
-            logger.warning("address capture did not complete", exc_info=True)
-            raise ToolError(
-                "The address didn't come through. Apologize, then ask whether they want "
-                "delivery or pickup and try again."
-            ) from None
-
-        if not serves(result.address):
-            order.fulfillment = None
-            order.address = None
-            raise ToolError(
-                f"We don't deliver to {result.address}. Tell them it's outside our "
-                f"delivery area, that they're welcome to collect from "
-                f"{SHOP_ADDRESS}, and ask whether they'd like pickup instead."
+        if not address.strip():
+            # Not an error: they've chosen delivery and simply haven't been asked yet.
+            # Fulfillment stays unset so a half-finished delivery can't reach confirm.
+            return (
+                "Delivery needs an address. "
+                "| next: ask for their address, then call this again with it"
             )
 
-        order.address = result.address
+        if not serves(address):
+            raise ToolError(
+                f"We don't deliver to {address}. Tell them it's outside our delivery "
+                f"area, that they're welcome to collect from {SHOP_ADDRESS}, and ask "
+                f"whether they'd like pickup instead."
+            )
+
+        order.fulfillment = "delivery"
+        order.address = address
         return (
-            f"Delivering to {result.address}, {DELIVERY_ETA}. "
+            f"Delivering to {address}, {DELIVERY_ETA}. "
             f"Delivery fee {speak_price(DELIVERY_FEE)}, total {speak_price(order.total)}. "
-            "| next: collect their name and phone number"
+            "| next: read the address back to check it, then collect their name and phone number"
         )
 
     @function_tool
@@ -431,18 +429,35 @@ class OrderingTools:
         )
 
     @function_tool
-    async def confirm_order(self, ctx: RunContext[Userdata]) -> str:
-        """Place the order. Only call this after reading the order back and hearing an
-        explicit yes."""
+    async def confirm_order(self, ctx: RunContext[Userdata], read_back: bool) -> str:
+        """Place the order and get its code. Only after reading the order back.
+
+        This is the only thing that places an order. Until it returns a code the order
+        does not exist, whatever else has been said on the call.
+
+        Args:
+            read_back: True only once you have read the items and total back to the
+                caller and they have said yes. False if you haven't.
+        """
         # Placing the order can't be rolled back — a caller talking over the agent
         # must not leave it half-committed.
         ctx.disallow_interruptions()
 
         order = ctx.userdata.order
+        # A plain string, not a ToolError: nothing has gone wrong, the agent simply has
+        # a step left to do. Errors invite apologies; this invites the readback.
+        if not read_back:
+            return (
+                "Not placed. | next: call order_summary, read out exactly what it "
+                "returns, get an explicit yes, then call this again"
+            )
+
         missing = order.missing_for_confirm()
         if missing:
             raise ToolError(
-                "Can't place the order yet — still need " + ", ".join(missing) + "."
+                "Can't place the order yet — still need "
+                + ", ".join(missing)
+                + ". Ask the caller for it. The order is NOT placed."
             )
         if order.readback_is_stale:
             # The order changed since it was last read back, so the total the

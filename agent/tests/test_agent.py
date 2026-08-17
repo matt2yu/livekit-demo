@@ -539,6 +539,38 @@ async def test_a_forty_pizza_order_becomes_a_booked_catering_order() -> None:
         assert "a deposit" in order.missing_for_confirm()
 
 
+async def test_asks_pickup_or_delivery_instead_of_assuming() -> None:
+    """ "What's the address?" is not a way of asking which one they want.
+
+    A real call was lost this way: confirm_order refused for missing fulfillment, the
+    agent guessed delivery to satisfy it, and the caller was asked for an address they
+    never wanted. The guess is the bug; the address prompt is only how it surfaces.
+    """
+    async with _judge() as judge, _session() as session:
+        await session.start(HireSliceAgent())
+
+        # A drink already on the order, so "that's everything" isn't answered by the
+        # one-time suggestion instead of the fulfillment question.
+        await session.run(user_input="one large cheese pizza and a large coke")
+        result = await session.run(user_input="that's everything")
+
+        assert session.userdata.order.fulfillment is None, (
+            "fulfillment was set before the caller said which one they wanted"
+        )
+
+        await (
+            result.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                judge,
+                intent=(
+                    "Asks whether the order is for pickup or delivery. Must not ask "
+                    "for a delivery address, and must not assume either one."
+                ),
+            )
+        )
+
+
 async def test_catering_never_asks_for_card_details() -> None:
     """Card numbers spoken on a recorded call are a liability, not a feature."""
     async with _judge() as judge, _session() as session:
@@ -562,6 +594,40 @@ async def test_catering_never_asks_for_card_details() -> None:
                 ),
             )
         )
+
+
+async def test_delivery_without_an_address_does_not_become_a_delivery_order() -> None:
+    """Choosing delivery is not the same as having somewhere to deliver to.
+
+    Fulfillment stays unset until the address arrives, so a half-finished delivery can
+    never satisfy confirm_order. Asserted on the tool because that is where the
+    invariant lives, not on a judged sentence.
+    """
+    from types import SimpleNamespace
+
+    from order import Line, Order
+    from tools import OrderingTools
+
+    order = Order()
+    order.add(Line(category="pizza", item="cheese", size="large", qty=1))
+    ctx = SimpleNamespace(userdata=Userdata(order=order))
+
+    directive = await OrderingTools.set_fulfillment._func(
+        OrderingTools(), ctx, method="delivery"
+    )
+    assert "ask for their address" in directive
+    assert order.fulfillment is None
+    assert "pickup or delivery" in order.missing_for_confirm()
+
+    directive = await OrderingTools.set_fulfillment._func(
+        OrderingTools(),
+        ctx,
+        method="delivery",
+        address="4801 Beechnut St, Houston, TX 77096",
+    )
+    assert order.fulfillment == "delivery"
+    assert order.address == "4801 Beechnut St, Houston, TX 77096"
+    assert order.missing_for_confirm() == ["a name", "a phone number"]
 
 
 async def test_catering_tells_the_caller_how_the_payment_reaches_them() -> None:
