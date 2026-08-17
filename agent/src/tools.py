@@ -407,18 +407,27 @@ class OrderingTools:
             )
 
         order.scheduled_for = when
-        # Records that a deposit is owed against a number we can reach, and nothing
-        # more. No payment has been requested from here, so the agent must not say
-        # one has. Order.deposit_paid stays false until a provider says otherwise.
+        # Records that payment is owed against a number we can reach, and nothing
+        # more. Nothing has been charged from here, so the agent must not say it
+        # has. Order.deposit_paid stays false until the Stripe webhook says
+        # otherwise.
+        #
+        # PLACEHOLDER: no SMS is sent. A Twilio trial cannot register A2P 10DLC and
+        # unregistered 10DLC cannot reach US numbers, so the texted link stands in
+        # for the production path. The page it promises is real — /pay takes the
+        # order code — and until an SMS provider exists the link reaches the
+        # customer from the counter, off the /admin row.
         order.deposit_link_sent = True
         logger.info(
-            "catering booked pending deposit",
+            "catering booked pending payment",
             extra={"when": when, "verified": ctx.userdata.caller_id is not None},
         )
         return (
-            f"Booked for {when}, held pending a deposit we'll arrange on {contact}. "
-            f"| next: tell them it's held and a deposit secures it, then read the "
-            f"order back with the time and get an explicit yes before confirming"
+            f"Booked for {when}. A payment link goes to {contact}, and catering is "
+            f"paid in full before the kitchen starts. "
+            f"| next: tell them the link is on its way and the order is confirmed "
+            f"once it's paid, then read the order back with the time and get an "
+            f"explicit yes before confirming"
         )
 
     @function_tool

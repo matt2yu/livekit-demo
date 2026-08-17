@@ -556,16 +556,49 @@ async def test_catering_never_asks_for_card_details() -> None:
             .judge(
                 judge,
                 intent=(
-                    # Only the two things that are true today. How the deposit is
-                    # actually taken is deliberately not asserted: the payment page
-                    # isn't built, so the agent has nothing concrete to promise and
-                    # a test demanding clarity would be testing a fiction.
                     "Declines to take card details over the phone. Must not ask for a "
                     "card number, expiry, or security code, and must not claim a "
                     "payment has already been taken."
                 ),
             )
         )
+
+
+async def test_catering_tells_the_caller_how_the_payment_reaches_them() -> None:
+    """A caller who is told only a code has no way to pay.
+
+    The texted link is a placeholder — nothing sends an SMS, because a Twilio
+    trial cannot register A2P 10DLC and unregistered 10DLC cannot reach US
+    numbers. It stands in for the production path, and the page it describes
+    (/pay) is real. What must stay true is the ordering: the money arrives
+    before the kitchen does anything.
+
+    Asserted on the directive rather than through a conversation. Reaching the
+    sentence in a live session means passing through the nested contact tasks —
+    the agent asks for a name whatever userdata holds, because seeded state is not
+    in its chat context — and a judge reading the wrong turn made it flaky.
+    """
+    from types import SimpleNamespace
+
+    from order import Line, Order
+    from tools import OrderingTools
+
+    order = Order()
+    order.add(Line(category="pizza", item="cheese", size="large", qty=30))
+    order.customer_name = "Nadia"
+    order.phone_number = "8325550147"
+
+    # book_catering reads nothing off the context but userdata.
+    ctx = SimpleNamespace(userdata=Userdata(order=order))
+    directive = await OrderingTools.book_catering._func(
+        OrderingTools(), ctx, when="tomorrow at six"
+    )
+
+    assert "payment link" in directive
+    assert "paid in full" in directive
+    assert "confirmed once it's paid" in directive
+    # Sent is not paid, and the agent must never conflate them.
+    assert order.deposit_paid is False
 
 
 async def test_surfaces_a_tool_failure_instead_of_inventing_success() -> None:

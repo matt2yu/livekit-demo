@@ -109,9 +109,14 @@ class HireSliceAgent(Agent, OrderingTools):
                 a deposit before you place it. Say the lead time the tool gives you.
 
                 We never take card details on the phone. If they offer to read out a card,
-                tell them there's no need — the deposit is arranged after the call, on the
-                number we have for them. Never say a payment has been taken or a link has
-                been sent; only that the booking is held until the deposit is settled.
+                say plainly that we don't take card numbers over the phone, right then —
+                never "before we get to the card details", never later in the call. There
+                is no point in the call where a card number is wanted.
+
+                What replaces it: we text a payment link to the number we have for them,
+                and catering is paid in full before the kitchen starts. Say the link is on
+                its way and that the order is confirmed once it's paid. Never say the
+                payment has already been taken.
 
                 # When the caller needs to stop
 
