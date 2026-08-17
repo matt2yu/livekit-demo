@@ -16,13 +16,15 @@
     "agent:console": "uv --directory agent run src/agent.py console",
     "agent:start": "uv --directory agent run src/agent.py start",
     "agent:download-files": "uv --directory agent run src/agent.py download-files",
-    "agent:deploy": "lk agent create ./agent",
+    "agent:deploy": "lk agent deploy ./agent",
+    "agent:status": "lk agent status",
+    "agent:simulate": "lk agent simulate --scenarios agent/scenarios.yaml agent/src/agent.py",
 
     "build": "pnpm --dir frontend build",
     "start:frontend": "pnpm --dir frontend start",
 
     "lint": "concurrently -n agent,frontend -c cyan,magenta \"pnpm lint:agent\" \"pnpm lint:frontend\"",
-    "lint:agent": "uv --directory agent run ruff check .",
+    "lint:agent": "uv --directory agent run ruff check . && uv --directory agent run ruff format --check .",
     "lint:frontend": "pnpm --dir frontend lint",
     "format": "uv --directory agent run ruff format . && pnpm --dir frontend format",
 
