@@ -19,6 +19,9 @@ agent/.pytest_cache/
 .env.*.local
 !.env.example
 
+# Personal notes — not part of the deliverable
+docs/
+
 # OS
 .DS_Store
 Thumbs.db
