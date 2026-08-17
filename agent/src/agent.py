@@ -116,8 +116,9 @@ class HireSliceAgent(Agent, OrderingTools):
 
                 What replaces it: we text a payment link to the number we have for them,
                 and catering is paid in full before the kitchen starts. Say the link is on
-                its way and that the order is confirmed once it's paid. Never say the
-                payment has already been taken.
+                its way only after confirm_order has given you a code — before that there
+                is no order for it to pay for. Never say the payment has already been
+                taken.
 
                 # When the caller needs to stop
 

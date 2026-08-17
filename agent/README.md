@@ -118,6 +118,7 @@ uv run pytest
 LIVEKIT_EVALS_VERBOSE=1 uv run pytest -s -o log_cli=true   # see the judge's reasoning
 ```
 
-These run text-only — `session.run()` drives the LLM directly, so STT and TTS never execute. The
-judge is Anthropic rather than LiveKit Inference, so the suite costs **zero LiveKit credits**,
-leaving the free tier's ~50 inference minutes for actual calls.
+These run text-only — `session.run()` drives the LLM directly, so STT and TTS never execute and the
+suite costs **zero inference minutes**, leaving the free tier's ~50 for actual calls. The agent
+under test runs on Anthropic; the judge runs on LiveKit Inference (`google/gemma-4-31b-it`), which
+keeps roughly half the suite's LLM calls off a bill charged by the token.

@@ -1,9 +1,9 @@
 """Behavior evals for the ordering flow.
 
 Text-only: session.run() drives the LLM directly, so STT and TTS never run and
-these cost no LiveKit Inference minutes. The judge is Anthropic rather than
-inference.LLM so the whole suite burns zero LiveKit credits — those are worth
-more as real call minutes.
+these cost no LiveKit Inference minutes — the free tier's ~50 are worth more as
+real call minutes. The agent under test bills Anthropic; the judge bills LiveKit
+Inference instead, for the reason in _judge().
 
 Most assertions are deterministic (is_function_call / is_function_call_output).
 judge() is reserved for the cases where the requirement really is semantic.
@@ -104,10 +104,16 @@ async def test_adds_pizza_once_size_is_known() -> None:
 
         result = await session.run(user_input="A large cheese pizza")
 
-        result.expect.next_event().is_function_call(
+        # contains_ rather than next_event: the model sometimes speaks the
+        # "anything else?" line before the call and sometimes after, and which
+        # side of the tool call it lands on is not behavior worth failing on.
+        result.expect.contains_function_call(
             name="add_item", arguments={"item": "cheese", "size": "large"}
         )
-        result.expect.next_event().is_function_call_output()
+
+        order = session.userdata.order
+        assert len(order.lines) == 1
+        assert order.total == pytest.approx(17.00)
 
 
 async def test_quantity_correction_updates_rather_than_duplicates() -> None:
@@ -630,7 +636,45 @@ async def test_delivery_without_an_address_does_not_become_a_delivery_order() ->
     assert order.missing_for_confirm() == ["a name", "a phone number"]
 
 
-async def test_catering_tells_the_caller_how_the_payment_reaches_them() -> None:
+async def test_garbled_address_is_not_an_out_of_area_refusal() -> None:
+    """A bad line and a wrong postcode fail the same check but need opposite replies.
+
+    Telling someone on a crackly phone that we don't deliver to "sh gr mmm forty pfff
+    road" loses an order that was never out of area.
+    """
+    from types import SimpleNamespace
+
+    from livekit.agents import ToolError
+
+    from order import Line, Order
+    from tools import OrderingTools
+
+    order = Order()
+    order.add(Line(category="pizza", item="cheese", size="large", qty=1))
+    ctx = SimpleNamespace(userdata=Userdata(order=order))
+
+    with pytest.raises(ToolError) as garbled:
+        await OrderingTools.set_fulfillment._func(
+            OrderingTools(), ctx, method="delivery", address="sh gr mmm forty pfff road"
+        )
+    assert "say it again" in str(garbled.value)
+    assert "We don't deliver" not in str(garbled.value)
+
+    with pytest.raises(ToolError) as out_of_area:
+        await OrderingTools.set_fulfillment._func(
+            OrderingTools(),
+            ctx,
+            method="delivery",
+            address="1 Main St, Dallas TX 75201",
+        )
+    assert "delivery area" in str(out_of_area.value)
+
+    assert order.fulfillment is None, "neither refusal may leave a half-set delivery"
+
+
+async def test_catering_tells_the_caller_how_the_payment_reaches_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A caller who is told only a code has no way to pay.
 
     The texted link is a placeholder — nothing sends an SMS, because a Twilio
@@ -646,23 +690,37 @@ async def test_catering_tells_the_caller_how_the_payment_reaches_them() -> None:
     """
     from types import SimpleNamespace
 
+    import orders_db
     from order import Line, Order
     from tools import OrderingTools
+
+    # This asserts on wording, not on persistence; a configured Supabase would
+    # make it a network test.
+    monkeypatch.setattr(orders_db, "is_configured", lambda: False)
 
     order = Order()
     order.add(Line(category="pizza", item="cheese", size="large", qty=30))
     order.customer_name = "Nadia"
     order.phone_number = "8325550147"
 
-    # book_catering reads nothing off the context but userdata.
-    ctx = SimpleNamespace(userdata=Userdata(order=order))
-    directive = await OrderingTools.book_catering._func(
-        OrderingTools(), ctx, when="tomorrow at six"
+    # Neither tool reads anything off the context but userdata.
+    tools = OrderingTools()
+    ctx = SimpleNamespace(
+        userdata=Userdata(order=order), disallow_interruptions=lambda: None
     )
 
-    assert "payment link" in directive
-    assert "paid in full" in directive
-    assert "confirmed once it's paid" in directive
+    booked = await OrderingTools.book_catering._func(tools, ctx, when="tomorrow at six")
+    assert "paid in full" in booked
+    # Booking runs turns before the order exists. Promising a link here promises
+    # it against nothing — the failure a simulated catering call actually hit.
+    assert "payment link" not in booked
+
+    order.fulfillment = "pickup"
+    await OrderingTools.order_summary._func(tools, ctx)
+    placed = await OrderingTools.confirm_order._func(tools, ctx, read_back=True)
+
+    assert "payment link" in placed
+    assert "paid in full" in placed
     # Sent is not paid, and the agent must never conflate them.
     assert order.deposit_paid is False
 

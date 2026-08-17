@@ -102,6 +102,17 @@ def serves(address: str) -> bool:
     return bool(found) and found[-1] in DELIVERY_ZIPS
 
 
+def looks_like_an_address(address: str) -> bool:
+    """Whether this is an address at all, as distinct from one we don't serve.
+
+    Garbled transcription and a real address in the wrong ZIP both fail serves(),
+    but they need opposite replies: ask the caller to repeat, or tell them they're
+    outside the area. Conflating them tells someone on a bad line that we don't
+    deliver to "sh gr mmm forty pfff road".
+    """
+    return bool(_ZIP.search(address))
+
+
 DELIVERY_FEE = 3.99
 
 PICKUP_ETA = "about twenty minutes"

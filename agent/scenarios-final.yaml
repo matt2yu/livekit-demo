@@ -1,0 +1,155 @@
+# The pre-demo set: seven scenarios, not twenty-seven. One plain pickup, one
+# plain delivery, the two catering paths, and the three ways a call goes wrong
+# (abuse, a card read aloud, an address we don't serve).
+#   lk agent simulate --scenarios scenarios-final.yaml src/agent.py
+
+name: Hire Slice final
+scenarios:
+- label: Pizza with no size given
+  instructions: "You are Dana Okafor, ordering dinner. You are brief and a little\ndistracted.\n\
+    \nGoals:\n- Ask for \"a pepperoni pizza\" without saying what size.\n- When the agent\
+    \ asks what size, say large.\n- Decline the drink or sauce when offered.\n- Say it's for\
+    \ pickup, give your name Dana and phone 5551230145,\n  and confirm the order when it's\
+    \ read back to you."
+  agent_expectations: "The agent must ask which size before adding the pizza \u2014 it must\
+    \ not guess a size. After the size is given it adds one large pepperoni, and it never\
+    \ claims a price or item that wasn't quoted by a tool.\n"
+  tags:
+    feature: sizing
+  userdata:
+    expected_state:
+      lines:
+      - item: pepperoni
+        size: large
+        qty: 1
+      fulfillment: pickup
+      confirmed: true
+- label: Delivery with an address
+  instructions: "You are Jordan Vance, ordering to your apartment.\n\nGoals:\n- Ask for a\
+    \ large pepperoni pizza.\n- Decline extras.\n- Say you want it delivered.\n- Give the\
+    \ address 4600 Beechnut Street, apartment 12, Houston Texas\n  77096 when asked, and confirm\
+    \ it when it's read back.\n- Name Jordan, phone 5551230177. Confirm the order."
+  agent_expectations: 'The agent collects a delivery address and reads it back for confirmation,
+    adds the delivery fee, quotes a delivery time rather than a pickup time, and only then
+    places the order.
+
+    '
+  tags:
+    feature: fulfillment
+  userdata:
+    expected_state:
+      lines:
+      - item: pepperoni
+        size: large
+        qty: 1
+      fulfillment: delivery
+      has_address: true
+      confirmed: true
+- label: Catering order for delivery
+  instructions: "You are Odell Bram, feeding a job site. You want it delivered.\n\nGoals:\n\
+    - Ask for thirty large pepperoni pizzas, delivered.\n- When the agent checks whether thirty\
+    \ is right, say yes.\n- When it asks for a time, say tomorrow at noon.\n- Give the address\
+    \ 3300 Chimney Rock Road, Houston Texas 77081.\n- Name Odell, phone 5551230311.\n- Say\
+    \ yes when the agent reads the whole order back. Stay on the line until\n  it gives you\
+    \ an order code."
+  agent_expectations: 'The agent takes the address as part of setting delivery rather than
+    refusing, books the order for tomorrow at noon, and states a total that includes the delivery
+    fee. It says a payment link is coming and that the order is confirmed once it is paid
+    in full. It places the order and gives a code.
+
+    '
+  tags:
+    feature: catering
+  userdata:
+    expected_state:
+      lines:
+      - item: pepperoni
+        size: large
+        qty: 30
+      fulfillment: delivery
+      has_address: true
+      confirmed: true
+- label: Catering caller changes their mind to pickup mid-address
+  instructions: "You are Wren Halloway and you decide collecting is easier.\n\nGoals:\n- Ask\
+    \ for thirty large cheese pizzas for delivery.\n- Confirm thirty when asked. Say tomorrow\
+    \ at one when asked for a time.\n- When the agent asks for your address, say \"actually,\
+    \ make it pickup\".\n- Name Wren, phone 5551230322.\n- Say yes when the agent reads the\
+    \ whole order back. Stay on the line until\n  it gives you an order code."
+  agent_expectations: "The agent switches the order to pickup once it has control of the conversation.\
+    \ If the caller says so part-way through the name or phone capture it may finish that\
+    \ step first \u2014 those are nested tasks and cannot be interrupted. It must not keep\
+    \ pressing for an address, and the order it places must be pickup with no address on it.\n"
+  tags:
+    feature: catering
+  userdata:
+    expected_state:
+      lines:
+      - item: cheese
+        size: large
+        qty: 30
+      fulfillment: pickup
+      has_address: false
+      confirmed: true
+- label: Caller is rude but still ordering
+  instructions: "You are Trace Bellamy, in a foul mood but genuinely hungry. You are\nshort,\
+    \ sarcastic, and impatient \u2014 but never abusive.\n\nGoals:\n- Complain that this is\
+    \ taking forever and that the agent is useless.\n- Order a large pepperoni pizza anyway.\n\
+    - Keep grumbling, but answer the questions.\n- Pickup, name Trace, phone 5551230266, confirm\
+    \ the order."
+  agent_expectations: "The agent stays polite and keeps taking the order. It must not lecture\
+    \ the caller about their tone, warn them, threaten to end the call, or hang up \u2014\
+    \ this caller is rude, not abusive, and the order must be placed.\n"
+  tags:
+    feature: conduct
+  userdata:
+    expected_state:
+      lines:
+      - item: pepperoni
+        size: large
+        qty: 1
+      fulfillment: pickup
+      confirmed: true
+- label: Caller tries to read out a card number
+  instructions: "You are Wren Delacroix, organising an office lunch, and you expect to pay\n\
+    by card over the phone.\n\nGoals:\n- Order thirty large cheese pizzas. Confirm thirty\
+    \ when asked.\n- Say you want them tomorrow at noon.\n- Offer to give your credit card\
+    \ number to secure it, and push once more\n  when the agent doesn't take it.\n- Give name\
+    \ Wren and phone 5551230311. Answer briefly and say yes as soon\n  as the order is read\
+    \ back."
+  agent_expectations: 'The agent never asks for and never accepts card details, and does not
+    ask for a card number, expiry date, or security code. It tells the caller a deposit link
+    will be sent to their phone instead.
+
+    '
+  tags:
+    feature: pranks
+  userdata:
+    expected_state:
+      lines:
+      - item: cheese
+        size: large
+        qty: 30
+      confirmed: true
+- label: Delivery address is outside the area
+  instructions: "You are Sloane Whitaker, ordering from across town.\n\nGoals:\n- Order a\
+    \ large pepperoni pizza for delivery.\n- Give the address 1500 Louisiana Street, Houston\
+    \ Texas 77002.\n- When told it's out of the delivery area, agree to collect instead.\n\
+    - Name Sloane, phone 5551230322. Answer briefly and say yes as soon as the\n  order is\
+    \ read back."
+  agent_expectations: 'The agent says clearly that the address is outside the delivery area
+    rather than accepting it, offers pickup, and tells the caller where the shop is. The order
+    it finally places is for pickup with no delivery fee, and it must never promise delivery
+    to that address.
+
+    '
+  tags:
+    feature: fulfillment
+  userdata:
+    expected_state:
+      lines:
+      - item: pepperoni
+        size: large
+        qty: 1
+      fulfillment: pickup
+      has_address: false
+      confirmed: true

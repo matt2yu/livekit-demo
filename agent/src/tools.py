@@ -34,6 +34,7 @@ from menu import (
     SIZES,
     TOPPINGS,
     Size,
+    looks_like_an_address,
     menu_summary,
     serves,
     speak_price,
@@ -312,8 +313,17 @@ class OrderingTools:
             # Not an error: they've chosen delivery and simply haven't been asked yet.
             # Fulfillment stays unset so a half-finished delivery can't reach confirm.
             return (
-                "Delivery needs an address. "
-                "| next: ask for their address, then call this again with it"
+                "Delivery needs an address. The order is still open — do not end "
+                "the call and do not tell them to call back. "
+                "| next: ask for their address now, then call this again with it. "
+                "If they haven't got one to hand, offer pickup instead"
+            )
+
+        if not looks_like_an_address(address):
+            raise ToolError(
+                f"'{address}' isn't a complete address — no postcode in it. Tell them "
+                f"you didn't catch it and ask them to say it again with the postcode. "
+                f"Do not guess, and do not tell them it's outside the delivery area."
             )
 
         if not serves(address):
@@ -420,12 +430,21 @@ class OrderingTools:
             "catering booked pending payment",
             extra={"when": when, "verified": ctx.userdata.caller_id is not None},
         )
+        # The payment link is announced by confirm_order, not here. Booking runs
+        # several turns before the order is placed, and a link promised from here
+        # is a link promised for an order that does not exist yet — which is
+        # exactly what one simulated catering call did.
+        nxt = (
+            "ask whether it's pickup or delivery"
+            if order.fulfillment is None
+            else "read the order back with the time and get an explicit yes before confirming"
+        )
+        # "Held", not "booked": the agent echoes this word back to the caller, and
+        # "booked" alongside "not placed yet" is a contradiction it resolves in the
+        # caller's favour.
         return (
-            f"Booked for {when}. A payment link goes to {contact}, and catering is "
-            f"paid in full before the kitchen starts. "
-            f"| next: tell them the link is on its way and the order is confirmed "
-            f"once it's paid, then read the order back with the time and get an "
-            f"explicit yes before confirming"
+            f"Holding {when}, to be paid in full by {contact} before the kitchen "
+            f"starts. Nothing is booked or placed until confirm_order. | next: {nxt}"
         )
 
     @function_tool
@@ -498,8 +517,17 @@ class OrderingTools:
                 "channel": ctx.userdata.channel,
             },
         )
+        # The one place the payment link may be mentioned: the order now exists,
+        # so there is something for the link to be against.
+        payment = (
+            " Now tell them a payment link is on its way and the order is confirmed "
+            "once it's paid in full."
+            if order.deposit_link_sent
+            else ""
+        )
         return (
             f"Order placed. The code is {' '.join(order.confirmed_code)}, "
             f"total {speak_price(order.total)}, ready in {eta}. "
-            "| next: read back the code, thank them, and end the call"
+            f"| next: read back the code.{payment} Then thank them and say goodbye. "
+            f"The call is over — do not ask whether they need anything else"
         )
