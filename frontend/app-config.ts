@@ -33,20 +33,25 @@ export interface AppConfig {
 }
 
 export const APP_CONFIG_DEFAULTS: AppConfig = {
-  companyName: 'LiveKit',
-  pageTitle: 'LiveKit Voice Agent',
-  pageDescription: 'A voice agent built with LiveKit',
+  companyName: 'Hire Slice',
+  pageTitle: 'Hire Slice — order by voice',
+  pageDescription: 'Order a pizza by talking to us. Same agent that answers the phone.',
 
   supportsChatInput: true,
   supportsVideoInput: true,
   supportsScreenShare: true,
   isPreConnectBufferEnabled: true,
 
-  logo: '/lk-logo.svg',
-  accent: '#002cf2',
-  logoDark: '/lk-logo-dark.svg',
-  accentDark: '#1fd5f9',
-  startButtonText: 'Start call',
+  logo: '/hire-slice-lockup.svg',
+  // The mark half of the lockup carries its own cream disc, but the wordmark is
+  // thin against a dark background — the dark variant lifts those fills only.
+  logoDark: '/hire-slice-lockup-dark.svg',
+  // getStyles() injects `accent` as --primary, so this one value re-skins every
+  // button. It does not set --primary-foreground, whose dark default is near
+  // black — hence a light accentDark, so button labels stay legible.
+  accent: '#C6362B',
+  accentDark: '#F0C9A0',
+  startButtonText: 'Start your order',
 
   // optional: audio visualization configuration
   // audioVisualizerType: 'bar',
