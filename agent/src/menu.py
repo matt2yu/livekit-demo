@@ -197,8 +197,15 @@ def _say_number(n: int) -> str:
     if n < 100:
         tens, ones = divmod(n, 10)
         return _TENS[tens] if ones == 0 else f"{_TENS[tens]}-{_ONES[ones]}"
+    # Price speech pairs the hundreds ("thirty-seven hundred"), but a round
+    # pair of hundreds is said in thousands: "two thousand fifty", never
+    # "twenty hundred fifty".
     hundreds, rest = divmod(n, 100)
-    head = f"{_ONES[hundreds]} hundred"
+    if n < 10_000 and hundreds % 10:
+        head = f"{_say_number(hundreds)} hundred"
+        return head if rest == 0 else f"{head} {_say_number(rest)}"
+    thousands, rest = divmod(n, 1000)
+    head = f"{_say_number(thousands)} thousand"
     return head if rest == 0 else f"{head} {_say_number(rest)}"
 
 

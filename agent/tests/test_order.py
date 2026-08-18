@@ -1,6 +1,6 @@
 import pytest
 
-from menu import DELIVERY_FEE, serves, speak_price
+from menu import DELIVERY_FEE, PIZZAS, serves, speak_price
 from order import AmbiguousItemError, Line, Order
 
 
@@ -243,6 +243,41 @@ def test_switching_to_delivery_after_items_updates_the_total():
 )
 def test_prices_are_spoken_naturally(amount, spoken):
     assert speak_price(amount) == spoken
+
+
+# Session RM_fWQ6i67cAJks spoke "$1,550" fine; RM_CucYjGowCaR4 crashed on
+# "$3,700" with IndexError — _say_number could only reach $1,999. Every total
+# a catering order can produce must be speakable.
+@pytest.mark.parametrize(
+    ("amount", "spoken"),
+    [
+        # session 1: 100 medium pepperoni, then with the delivery fee
+        (1550.00, "fifteen hundred fifty dollars"),
+        (1553.99, "fifteen hundred fifty-three ninety-nine"),
+        # the old ceiling: last amount that worked, first that crashed
+        (1999.00, "nineteen hundred ninety-nine dollars"),
+        (2000.00, "two thousand dollars"),
+        # session 2: 200 large pepperoni — and the retry loop's doubled cart
+        (3700.00, "thirty-seven hundred dollars"),
+        (7400.00, "seventy-four hundred dollars"),
+        (2050.00, "two thousand fifty dollars"),
+        (12500.00, "twelve thousand five hundred dollars"),
+    ],
+)
+def test_catering_sized_totals_are_speakable(amount, spoken):
+    assert speak_price(amount) == spoken
+
+
+def test_every_total_up_to_three_hundred_pizzas_is_speakable():
+    """The old ceiling hid because no test ever priced past $22.05.
+
+    Sweep every cent value up to 300 of the priciest pizza, delivered — well
+    past any order the shop has taken — so the next ceiling can't hide.
+    """
+    priciest = max(p.price(s) for p in PIZZAS.values() for s in p.prices)
+    ceiling_cents = round((300 * priciest + DELIVERY_FEE) * 100)
+    for cents in range(ceiling_cents + 1):
+        assert speak_price(cents / 100)
 
 
 def test_readback_mentions_items_delivery_and_total():

@@ -22,6 +22,9 @@ agent/.pytest_cache/
 # Personal notes — not part of the deliverable
 docs/
 
+# Session debug exports — caller audio and transcripts, not for the repo
+debug/
+
 # OS
 .DS_Store
 Thumbs.db

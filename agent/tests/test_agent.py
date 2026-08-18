@@ -725,6 +725,80 @@ async def test_catering_tells_the_caller_how_the_payment_reaches_them(
     assert order.deposit_paid is False
 
 
+async def test_a_two_hundred_pizza_add_survives_the_price_readback() -> None:
+    """Replays session RM_CucYjGowCaR4: 200 large pepperoni, confirmed, added.
+
+    That call crashed inside add_item — speak_price(3700.00) hit the _say_number
+    ceiling ($1,999) — while RM_fWQ6i67cAJks succeeded minutes earlier at
+    $1,550. Same code, same flow; the only difference was the total.
+    """
+    from types import SimpleNamespace
+
+    from livekit.agents import ToolError
+
+    from tools import OrderingTools
+
+    userdata = Userdata()
+    history = SimpleNamespace(items=[])
+    ctx = SimpleNamespace(userdata=userdata, session=SimpleNamespace(history=history))
+    tools = OrderingTools()
+
+    with pytest.raises(ToolError):
+        await OrderingTools.add_item._func(
+            tools, ctx, item="pepperoni", size="large", qty=200
+        )
+    assert userdata.order.is_empty, "the quantity check must not add anything"
+
+    history.items.append("caller: yes, that's correct")
+    added = await OrderingTools.add_item._func(
+        tools, ctx, item="pepperoni", size="large", qty=200
+    )
+
+    assert "thirty-seven hundred dollars" in added
+    assert "catering" in added
+    assert userdata.order.item_count == 200
+    assert userdata.order.total == pytest.approx(3700.00)
+
+
+async def test_a_failed_price_readback_leaves_the_cart_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The production crash left 200 pizzas in the cart behind an error reply.
+
+    The re-armed quantity check then asked again, and the confirmed retry added
+    200 more — every retry grew the order the caller believed was empty. If
+    composing the reply fails, the add must be undone with it.
+    """
+    from types import SimpleNamespace
+
+    from livekit.agents import ToolError
+
+    import tools as tools_module
+    from tools import OrderingTools
+
+    def unspeakable(amount: float) -> str:
+        raise IndexError("tuple index out of range")
+
+    monkeypatch.setattr(tools_module, "speak_price", unspeakable)
+
+    userdata = Userdata()
+    history = SimpleNamespace(items=[])
+    ctx = SimpleNamespace(userdata=userdata, session=SimpleNamespace(history=history))
+    tools = OrderingTools()
+
+    with pytest.raises(ToolError):
+        await OrderingTools.add_item._func(
+            tools, ctx, item="pepperoni", size="large", qty=200
+        )
+    history.items.append("caller: yes, that's correct")
+    with pytest.raises(IndexError):
+        await OrderingTools.add_item._func(
+            tools, ctx, item="pepperoni", size="large", qty=200
+        )
+
+    assert userdata.order.is_empty, "a failed add must not leave items on the order"
+
+
 async def test_surfaces_a_tool_failure_instead_of_inventing_success() -> None:
     """If the order system errors, say so — don't fabricate a confirmation."""
     async with _judge() as judge, _session() as session:
