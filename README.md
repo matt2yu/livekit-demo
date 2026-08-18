@@ -1,8 +1,8 @@
 # Hire Slice
 
 A voice agent that takes pizza orders — takeout or delivery — by phone or on the web, with a
-staff dashboard that shows orders as they're placed. Built on
-[LiveKit Agents](https://docs.livekit.io/agents/) and Supabase.
+staff dashboard that shows orders as they're placed and a Stripe page that takes payment for
+catering. Built on [LiveKit Agents](https://docs.livekit.io/agents/), Supabase, and Stripe.
 
 One agent serves both front doors. A phone caller reaches it over SIP, a web visitor over WebRTC,
 and both run identical code — the only difference is which transport dispatched the session, which
@@ -15,6 +15,8 @@ flowchart TD
   LK <-->|session| Agent["Voice agent<br/>Python, Claude Sonnet 4.6"]
   Agent -->|confirm_order, secret key| SB[("Supabase Postgres<br/>orders")]
   SB -->|realtime, publishable key| Admin["Staff dashboard<br/>/admin"]
+  Pay["Customer<br/>/pay/&lt;code&gt;"] -->|Checkout| Stripe["Stripe<br/>test mode"]
+  Stripe -->|signed webhook, service role| SB
 ```
 
 ## Layout
@@ -23,9 +25,9 @@ flowchart TD
 hire-slice/
 ├── agent/                 Python voice agent (uv + LiveKit Agents + Anthropic)
 │   ├── src/               agent, ordering tools, menu, order state, Supabase writer
-│   ├── tests/             36 tests: unit + behavior evals
+│   ├── tests/             99 tests: unit + behavior evals
 │   └── Dockerfile         deployed to LiveKit Cloud
-├── frontend/              Next.js — customer ordering page and /admin dashboard
+├── frontend/              Next.js — ordering page, /admin dashboard, /pay + Stripe webhook
 ├── supabase/
 │   └── migrations/        schema, RLS policies
 └── package.json           script runner; you shouldn't need to cd
@@ -39,15 +41,23 @@ pnpm dev       # runs agent and frontend together
 ```
 
 Then fill in `agent/.env.local` and `frontend/.env.local` (see each `.env.example`), and apply
-`supabase/migrations/0001_orders.sql` in the Supabase SQL editor.
+every file in `supabase/migrations/` in order in the Supabase SQL editor.
 
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Agent + frontend together |
+| `pnpm dev:frontend` | Frontend only — use this when an agent is already deployed |
 | `pnpm agent:console` | Talk to the agent in the terminal, no browser |
 | `pnpm test` | Agent test suite |
 | `pnpm lint` | Ruff + ESLint across both |
 | `pnpm agent:deploy` | Build and deploy the agent to LiveKit Cloud |
+
+`pnpm dev` starts a local agent that registers under the same name as the deployed one, and the
+two then compete for inbound calls. Against a live deployment, run `pnpm dev:frontend`.
+
+Stripe runs in test mode. `stripe listen --forward-to localhost:3000/api/stripe/webhook` prints
+the `whsec_` that `STRIPE_WEBHOOK_SECRET` needs; without it running, nothing can mark a deposit
+paid locally.
 
 ## Where the order goes
 

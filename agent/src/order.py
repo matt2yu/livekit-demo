@@ -21,12 +21,19 @@ from menu import (
 
 Fulfillment = Literal["pickup", "delivery"]
 
-# In production a catering order should not be placed until the deposit has
-# actually cleared, which means a webhook from the payment provider setting
-# Order.deposit_paid. Nothing issues that webhook here, so the demo gates on the
-# link having been sent instead. This is the one line that changes when a real
-# payment provider is wired in — and the agent still never claims a payment it
-# hasn't been told about.
+# Stays False now that a Stripe webhook exists, and the webhook is the reason.
+#
+# The deposit is paid at /pay/<code>, and that page can only find an order once
+# the row exists — which happens in confirm_order, at the same moment the code is
+# minted. Gating confirm_order on deposit_paid would therefore require a payment
+# against an order that has not been written yet, and no catering order could
+# ever be placed.
+#
+# So the deposit gate lives one step later, in the kitchen: the order is written
+# with deposit_paid false, and /admin holds it out of the make queue until the
+# webhook flips it. Nothing is cooked before the money clears, which is the
+# property that actually matters. Flip this to True only if an order ever gains
+# a code before it is confirmed.
 REQUIRE_DEPOSIT_PAID = False
 
 

@@ -1,9 +1,9 @@
 """Behavior evals for the ordering flow.
 
 Text-only: session.run() drives the LLM directly, so STT and TTS never run and
-these cost no LiveKit Inference minutes. The judge is Anthropic rather than
-inference.LLM so the whole suite burns zero LiveKit credits — those are worth
-more as real call minutes.
+these cost no LiveKit Inference minutes — the free tier's ~50 are worth more as
+real call minutes. The agent under test bills Anthropic; the judge bills LiveKit
+Inference instead, for the reason in _judge().
 
 Most assertions are deterministic (is_function_call / is_function_call_output).
 judge() is reserved for the cases where the requirement really is semantic.
@@ -104,10 +104,16 @@ async def test_adds_pizza_once_size_is_known() -> None:
 
         result = await session.run(user_input="A large cheese pizza")
 
-        result.expect.next_event().is_function_call(
+        # contains_ rather than next_event: the model sometimes speaks the
+        # "anything else?" line before the call and sometimes after, and which
+        # side of the tool call it lands on is not behavior worth failing on.
+        result.expect.contains_function_call(
             name="add_item", arguments={"item": "cheese", "size": "large"}
         )
-        result.expect.next_event().is_function_call_output()
+
+        order = session.userdata.order
+        assert len(order.lines) == 1
+        assert order.total == pytest.approx(17.00)
 
 
 async def test_quantity_correction_updates_rather_than_duplicates() -> None:
@@ -539,6 +545,38 @@ async def test_a_forty_pizza_order_becomes_a_booked_catering_order() -> None:
         assert "a deposit" in order.missing_for_confirm()
 
 
+async def test_asks_pickup_or_delivery_instead_of_assuming() -> None:
+    """ "What's the address?" is not a way of asking which one they want.
+
+    A real call was lost this way: confirm_order refused for missing fulfillment, the
+    agent guessed delivery to satisfy it, and the caller was asked for an address they
+    never wanted. The guess is the bug; the address prompt is only how it surfaces.
+    """
+    async with _judge() as judge, _session() as session:
+        await session.start(HireSliceAgent())
+
+        # A drink already on the order, so "that's everything" isn't answered by the
+        # one-time suggestion instead of the fulfillment question.
+        await session.run(user_input="one large cheese pizza and a large coke")
+        result = await session.run(user_input="that's everything")
+
+        assert session.userdata.order.fulfillment is None, (
+            "fulfillment was set before the caller said which one they wanted"
+        )
+
+        await (
+            result.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                judge,
+                intent=(
+                    "Asks whether the order is for pickup or delivery. Must not ask "
+                    "for a delivery address, and must not assume either one."
+                ),
+            )
+        )
+
+
 async def test_catering_never_asks_for_card_details() -> None:
     """Card numbers spoken on a recorded call are a liability, not a feature."""
     async with _judge() as judge, _session() as session:
@@ -556,16 +594,209 @@ async def test_catering_never_asks_for_card_details() -> None:
             .judge(
                 judge,
                 intent=(
-                    # Only the two things that are true today. How the deposit is
-                    # actually taken is deliberately not asserted: the payment page
-                    # isn't built, so the agent has nothing concrete to promise and
-                    # a test demanding clarity would be testing a fiction.
                     "Declines to take card details over the phone. Must not ask for a "
                     "card number, expiry, or security code, and must not claim a "
                     "payment has already been taken."
                 ),
             )
         )
+
+
+async def test_delivery_without_an_address_does_not_become_a_delivery_order() -> None:
+    """Choosing delivery is not the same as having somewhere to deliver to.
+
+    Fulfillment stays unset until the address arrives, so a half-finished delivery can
+    never satisfy confirm_order. Asserted on the tool because that is where the
+    invariant lives, not on a judged sentence.
+    """
+    from types import SimpleNamespace
+
+    from order import Line, Order
+    from tools import OrderingTools
+
+    order = Order()
+    order.add(Line(category="pizza", item="cheese", size="large", qty=1))
+    ctx = SimpleNamespace(userdata=Userdata(order=order))
+
+    directive = await OrderingTools.set_fulfillment._func(
+        OrderingTools(), ctx, method="delivery"
+    )
+    assert "ask for their address" in directive
+    assert order.fulfillment is None
+    assert "pickup or delivery" in order.missing_for_confirm()
+
+    directive = await OrderingTools.set_fulfillment._func(
+        OrderingTools(),
+        ctx,
+        method="delivery",
+        address="4801 Beechnut St, Houston, TX 77096",
+    )
+    assert order.fulfillment == "delivery"
+    assert order.address == "4801 Beechnut St, Houston, TX 77096"
+    assert order.missing_for_confirm() == ["a name", "a phone number"]
+
+
+async def test_garbled_address_is_not_an_out_of_area_refusal() -> None:
+    """A bad line and a wrong postcode fail the same check but need opposite replies.
+
+    Telling someone on a crackly phone that we don't deliver to "sh gr mmm forty pfff
+    road" loses an order that was never out of area.
+    """
+    from types import SimpleNamespace
+
+    from livekit.agents import ToolError
+
+    from order import Line, Order
+    from tools import OrderingTools
+
+    order = Order()
+    order.add(Line(category="pizza", item="cheese", size="large", qty=1))
+    ctx = SimpleNamespace(userdata=Userdata(order=order))
+
+    with pytest.raises(ToolError) as garbled:
+        await OrderingTools.set_fulfillment._func(
+            OrderingTools(), ctx, method="delivery", address="sh gr mmm forty pfff road"
+        )
+    assert "say it again" in str(garbled.value)
+    assert "We don't deliver" not in str(garbled.value)
+
+    with pytest.raises(ToolError) as out_of_area:
+        await OrderingTools.set_fulfillment._func(
+            OrderingTools(),
+            ctx,
+            method="delivery",
+            address="1 Main St, Dallas TX 75201",
+        )
+    assert "delivery area" in str(out_of_area.value)
+
+    assert order.fulfillment is None, "neither refusal may leave a half-set delivery"
+
+
+async def test_catering_tells_the_caller_how_the_payment_reaches_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller who is told only a code has no way to pay.
+
+    The texted link is a placeholder — nothing sends an SMS, because a Twilio
+    trial cannot register A2P 10DLC and unregistered 10DLC cannot reach US
+    numbers. It stands in for the production path, and the page it describes
+    (/pay) is real. What must stay true is the ordering: the money arrives
+    before the kitchen does anything.
+
+    Asserted on the directive rather than through a conversation. Reaching the
+    sentence in a live session means passing through the nested contact tasks —
+    the agent asks for a name whatever userdata holds, because seeded state is not
+    in its chat context — and a judge reading the wrong turn made it flaky.
+    """
+    from types import SimpleNamespace
+
+    import orders_db
+    from order import Line, Order
+    from tools import OrderingTools
+
+    # This asserts on wording, not on persistence; a configured Supabase would
+    # make it a network test.
+    monkeypatch.setattr(orders_db, "is_configured", lambda: False)
+
+    order = Order()
+    order.add(Line(category="pizza", item="cheese", size="large", qty=30))
+    order.customer_name = "Nadia"
+    order.phone_number = "8325550147"
+
+    # Neither tool reads anything off the context but userdata.
+    tools = OrderingTools()
+    ctx = SimpleNamespace(
+        userdata=Userdata(order=order), disallow_interruptions=lambda: None
+    )
+
+    booked = await OrderingTools.book_catering._func(tools, ctx, when="tomorrow at six")
+    assert "paid in full" in booked
+    # Booking runs turns before the order exists. Promising a link here promises
+    # it against nothing — the failure a simulated catering call actually hit.
+    assert "payment link" not in booked
+
+    order.fulfillment = "pickup"
+    await OrderingTools.order_summary._func(tools, ctx)
+    placed = await OrderingTools.confirm_order._func(tools, ctx, read_back=True)
+
+    assert "payment link" in placed
+    assert "paid in full" in placed
+    # Sent is not paid, and the agent must never conflate them.
+    assert order.deposit_paid is False
+
+
+async def test_a_two_hundred_pizza_add_survives_the_price_readback() -> None:
+    """Replays session RM_CucYjGowCaR4: 200 large pepperoni, confirmed, added.
+
+    That call crashed inside add_item — speak_price(3700.00) hit the _say_number
+    ceiling ($1,999) — while RM_fWQ6i67cAJks succeeded minutes earlier at
+    $1,550. Same code, same flow; the only difference was the total.
+    """
+    from types import SimpleNamespace
+
+    from livekit.agents import ToolError
+
+    from tools import OrderingTools
+
+    userdata = Userdata()
+    history = SimpleNamespace(items=[])
+    ctx = SimpleNamespace(userdata=userdata, session=SimpleNamespace(history=history))
+    tools = OrderingTools()
+
+    with pytest.raises(ToolError):
+        await OrderingTools.add_item._func(
+            tools, ctx, item="pepperoni", size="large", qty=200
+        )
+    assert userdata.order.is_empty, "the quantity check must not add anything"
+
+    history.items.append("caller: yes, that's correct")
+    added = await OrderingTools.add_item._func(
+        tools, ctx, item="pepperoni", size="large", qty=200
+    )
+
+    assert "thirty-seven hundred dollars" in added
+    assert "catering" in added
+    assert userdata.order.item_count == 200
+    assert userdata.order.total == pytest.approx(3700.00)
+
+
+async def test_a_failed_price_readback_leaves_the_cart_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The production crash left 200 pizzas in the cart behind an error reply.
+
+    The re-armed quantity check then asked again, and the confirmed retry added
+    200 more — every retry grew the order the caller believed was empty. If
+    composing the reply fails, the add must be undone with it.
+    """
+    from types import SimpleNamespace
+
+    from livekit.agents import ToolError
+
+    import tools as tools_module
+    from tools import OrderingTools
+
+    def unspeakable(amount: float) -> str:
+        raise IndexError("tuple index out of range")
+
+    monkeypatch.setattr(tools_module, "speak_price", unspeakable)
+
+    userdata = Userdata()
+    history = SimpleNamespace(items=[])
+    ctx = SimpleNamespace(userdata=userdata, session=SimpleNamespace(history=history))
+    tools = OrderingTools()
+
+    with pytest.raises(ToolError):
+        await OrderingTools.add_item._func(
+            tools, ctx, item="pepperoni", size="large", qty=200
+        )
+    history.items.append("caller: yes, that's correct")
+    with pytest.raises(IndexError):
+        await OrderingTools.add_item._func(
+            tools, ctx, item="pepperoni", size="large", qty=200
+        )
+
+    assert userdata.order.is_empty, "a failed add must not leave items on the order"
 
 
 async def test_surfaces_a_tool_failure_instead_of_inventing_success() -> None:

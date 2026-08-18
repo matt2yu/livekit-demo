@@ -35,7 +35,7 @@ export interface AppConfig {
 export const APP_CONFIG_DEFAULTS: AppConfig = {
   companyName: 'Hire Slice',
   pageTitle: 'Hire Slice — order by voice',
-  pageDescription: 'Order a pizza by talking to us. Same agent that answers the phone.',
+  pageDescription: 'Ordering pizza the easy way. Same agent that answers the phone.',
 
   supportsChatInput: true,
   supportsVideoInput: true,

@@ -102,6 +102,17 @@ def serves(address: str) -> bool:
     return bool(found) and found[-1] in DELIVERY_ZIPS
 
 
+def looks_like_an_address(address: str) -> bool:
+    """Whether this is an address at all, as distinct from one we don't serve.
+
+    Garbled transcription and a real address in the wrong ZIP both fail serves(),
+    but they need opposite replies: ask the caller to repeat, or tell them they're
+    outside the area. Conflating them tells someone on a bad line that we don't
+    deliver to "sh gr mmm forty pfff road".
+    """
+    return bool(_ZIP.search(address))
+
+
 DELIVERY_FEE = 3.99
 
 PICKUP_ETA = "about twenty minutes"
@@ -186,8 +197,15 @@ def _say_number(n: int) -> str:
     if n < 100:
         tens, ones = divmod(n, 10)
         return _TENS[tens] if ones == 0 else f"{_TENS[tens]}-{_ONES[ones]}"
+    # Price speech pairs the hundreds ("thirty-seven hundred"), but a round
+    # pair of hundreds is said in thousands: "two thousand fifty", never
+    # "twenty hundred fifty".
     hundreds, rest = divmod(n, 100)
-    head = f"{_ONES[hundreds]} hundred"
+    if n < 10_000 and hundreds % 10:
+        head = f"{_say_number(hundreds)} hundred"
+        return head if rest == 0 else f"{head} {_say_number(rest)}"
+    thousands, rest = divmod(n, 1000)
+    head = f"{_say_number(thousands)} thousand"
     return head if rest == 0 else f"{head} {_say_number(rest)}"
 
 
